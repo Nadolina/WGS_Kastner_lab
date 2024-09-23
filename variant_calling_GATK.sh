@@ -8,7 +8,7 @@ Help()
 	echo "To automate the processes of calling variants from WGS that has undergone standard GATK pre-processing recommendations, alignment (currently GRCh38), and standard alignment cleanup (mark duplicates, BQSR)."
 	echo ""
 	echo "To run this pipeline use the following command:"
-	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling.sh -b [batchfile] "
+	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile] "
     echo "-b    This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line."   
 
 }
@@ -30,6 +30,8 @@ rundate=`date +'%m%d%y'`  ## for use in various file and log names
 chrlist=($(seq 1 1 22) "X" "Y") 
 ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 dbsnp=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.dbsnp138.vcf.gz
+
+scriptpth=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 ## FUNCTIONS -----
 
@@ -109,7 +111,7 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
             -G AS_StandardAnnotation \
             --dbsnp $dbsnp \
             -L ${chrnum} \
-            -O ${PWD}/genotypedVCFs_${rundate}/${chrnum}-genotypevcf-${rundate}.vcf.gz \
+            -O ${PWD}/genotypedVCFs_${rundate}/${chrnum}.genotypevcf.${rundate}.vcf.gz \
             2> ${PWD}/genotypeGVCFs_logs/${chrnum}-${rundate}-${SLURM_JOB_ID}.log" >> ${PWD}/genotypeGVCFs-${rundate}.swarm
     done 
 
@@ -154,7 +156,10 @@ printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. G
 ## One swarm job per chromosome 
 
 generate_genotypeGVCFs_swarm
-swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:100 -g 24 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm
+genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:100 -g 24 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
+echo $genotypejid
+
+sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${scriptpth}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
 
 set +x 
 
