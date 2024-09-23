@@ -1,0 +1,365 @@
+---
+title: "bcftools filtering thresholds"
+output: html_document
+params:
+    myargs: ""
+---
+
+```{r setup, include=FALSE}
+# knitr::opts_knit$set(root.dir = params$myargs,warning=FALSE, message=FALSE, fig.pos = "H", out.extra = "")
+knitr::opts_knit$set(root.dir="/data/brajukanm/wgs_work/bcftools_out/",warning=FALSE, message=FALSE, fig.pos = "H", out.extra = "") # CHANGE BACK 
+```
+
+```{r packages, include=FALSE}
+
+renv::load("/data/brajukanm/envs")
+
+library(ggplot2)
+library(vcfR)
+library(readr)
+library(tidyverse)
+library(data.table)
+library(dplyr)
+library(kableExtra)
+library(stringr)
+
+```
+
+## **Overview**
+
+  Unlike GATK, there is no machine learning approach to filtering variants called by bcftools. To filter bcftools variants, we need to identify likely positive variants to be retained, and outliers that are unreliable and more likely to be false calls. 
+The most common approach to delineating between likely true and likely false variants, is to identify the extremes of variant metrics and use those as thresholds for retention. 
+
+  SNPs and indels will be filtered separately, because their metric extremes will vary, and some metrics are not suitable for filtering both variant types. I selected a few metrics for each variant type based on recommendations from tutortials, documentation
+and literature (1,2,3). Some tutortials recommend using vcftools to extract metrics and filter variants. I have instead opted to continue using bcftools for continued compatibility, as well as so I can directly interact with bcftools tags in the VCF. For SNPs, 
+I will use quality of the variant call (QUAL), depth (DP), mapping quality bias Z scores (MQBZ) and minor allele frequencies to filter SNPs. Quality and depth are recommended across the board as filtering parameters, because we are looking for SNPs that bcftools identified as high quality calls, and 
+that have substantial support from the alignment of many reads. The benchmarking work done in the samtools documentation (1) shows that MQBZ can be a powerful indicator for identifying false calls. MQBZ is the difference between mapping quality to the reference allele versus the alternate allele 
+(mainly in heterozygous SNPs), where a substantial difference in the REF and ALT mapping qualities could indicate a false call. Lastly, we will apply a MAF filter. There is debate around the efficacy of a MAF filter, but I will be implementing the recommendation in (3), which is to create two filtered VCFs:
+one with an MAF filter and one without. 
+
+  For indels, QUAL and DP were still recommended filtering parameters. MQBZ was shown to be less discriminating. Instead, the fraction of reads supporting an indel (IMF) seems to be a better metric for filtering. This seems more in line as well with the allele balance/mendelian violations described in (2).
+I will not be applying MAF to indels, as indels are a bit trickier to filter due to length and variation, and I want to limit overworking the dataset. 
+
+  There are other parameters that show some usefulness in filtering, that I have chosen to exclude. For instance, (1) shows that read position bias and strand bias can help to delineate between true and false positive SNPs. Given the ambiguity of rare disease variants, I am reluctant to apply too many filters. 
+Additionally, I suspect the majority of false calls that do not pass these additional filters, will have also failed the filters previously described. 
+
+  Variant calling resources suggest identifying hard filters (meaning a set parameter value). These recommendations are likely directed towards users who will filter one or a few batches of WGS/WES data. Given that our filtering scheme will be in ongoing use, I decided to construct something a bit more 
+maleable. This script is designed to take random, representative subsets of SNPs and indels (1% of each) from the batch variants merged across chromosomes, and identify the metric extremes. Largely, I expect the thresholds identified to be vary similar between batches. However, I am hopeful that this approach will 
+better navigate any batch specific biases, and retain likely variants that would possibly be removed by uniformly applied hard filters. Additionally, I have decided to use basic quantiles to identify thresholds. Our data will largely void assumptions of normality, and given that the goal is to be fairly permissive, 
+it is perhaps better to just identify quantiles that remove the most obvious outliers. 
+
+\newpage
+
+## **SNPs**
+
+```{r input files, include=FALSE}
+
+#rundate <- format(Sys.time(), "%m%e%y") ##CHANGE BACK 
+rundate <- "082324"
+snpmetrics<-paste0("snp-metrics-",rundate,".tsv")
+snpvcf<-paste0("subset-bcftools-snps-",rundate,".vcf.gz") 
+
+```
+
+```{r input VCF, include=FALSE }
+
+## Need a VCF with just SNPs for this. 
+readvcf <- read.vcfR(snpvcf,checkFile=TRUE,check_keys=TRUE) 
+
+
+readvcf |> 
+  maf(element = 2) |>
+  as.data.frame() -> mafdf 
+
+
+mafdf$chrpos <- row.names(mafdf)
+row.names(mafdf) <- 1:nrow(mafdf)
+
+mafdf_mut<- separate_wider_delim(data=mafdf, cols=chrpos, delim="_", names = c("chr","pos")) 
+
+freq_tab<- apply(mafdf_mut[c("nAllele","Count","Frequency")], 2, summary) 
+
+```
+
+```{r read bcftools stats, echo=FALSE}
+
+query <- read.csv(snpmetrics,
+         sep = "\t",
+         header=FALSE,
+         col.names=c("CHROM","POS","QUAL","DP","MQBZ")) 
+
+apply(query[c("QUAL","DP","MQBZ")],2,as.numeric) |> 
+  suppressWarnings() -> query[,c("QUAL","DP","MQBZ")] 
+query[which(is.na(query$MQBZ)),"MQBZ"] <- 0
+
+metrics_tab <-  apply(query[,c("QUAL","DP","MQBZ")], 2, summary)
+
+knitr::kable(list(freq_tab[,1:3],metrics_tab),
+  "html",
+  align="c",
+  booktabs=TRUE,
+  caption = "Summary statistics for allelic frequencies (left) and quality metrics (right).") |>
+  kable_styling(full_width=F, position="center") |>
+  column_spec(c(1:2),width="8cm" )
+```
+
+```{r metric plots before filters, echo=FALSE, results="asis", fig.show="hold", out.width="50%", fig.cap="1. Density of allelic depths observed in our subset.I have removed the highest 1% of depths to reduce skewing. 2. Distribution of quality in the subset. 3. Distribution of MQBZ values, excluding MQBZ=0 because a large portion of MQBZ scores are 0, and it heavily skews the vertical axis. " , suppressWarnings=TRUE}
+
+dp_den <- ggplot(query) +
+  geom_density(aes(DP), fill ="navy", alpha =0.3, colour ="navy") +
+  xlab("Depth") + 
+  ylab("Density") +
+  xlim(0,quantile(query$DP,prob=0.98)) +
+  theme_light() +
+  geom_vline(xintercept=quantile(query$DP,prob=0.975),
+             linetype="dashed") +
+  geom_vline(xintercept=quantile(query$DP,prob=0.025),
+             linetype="dashed") + 
+  annotate("text",
+          x=(quantile(query$DP,prob=0.025) + 50),
+          y=max(density(query$DP)$y),
+          label="2.5%") +
+  annotate("text",
+          x=(quantile(query$DP,prob=0.975) + 50), 
+          y=max(density(query$DP)$y),
+          label="97.5%")
+dp_den |> 
+  print() |>
+  suppressWarnings()
+
+qual_den <- ggplot(query) + 
+  geom_density(aes(QUAL),fill="green", color="black",alpha=0.4) +
+  xlab("Quality") +
+  theme_light()
+qual_den |>
+  print() |>
+  suppressWarnings()
+
+mqbz_den<- ggplot(query[query$MQBZ!=0,]) + 
+  geom_density(aes(MQBZ),fill="green", color="black",alpha=0.5) +
+  xlim(quantile(query$MQBZ,prob=0.01, na.rm = TRUE),max(query$MQBZ)) +
+  theme_light() 
+mqbz_den |>
+  print() |>
+  suppressWarnings()
+
+
+paste0("Number of MQBz scores equal to 0: ", length(which(query$MQBZ==0)), ".   \n\n\n") |> 
+  cat()
+
+```
+
+```{r identifying thresholds, echo=FALSE, results="asis"}
+
+qual_probs<-quantile(query$QUAL,probs=c(0.025,0.05,0.95,0.975))
+dp_probs<-quantile(query$DP,probs=c(0.025,0.05,0.95,0.975))
+mqbz_probs<-quantile(query$MQBZ,probs=c(0.025,0.05),na.rm = TRUE) 
+
+probstab<-data.frame(qual_probs,dp_probs,mqbz_probs)
+probstab[c(3,4),"mqbz_probs"] <- "NA"
+
+knitr::kable(probstab,caption = "Potential thresholds for removing outliers by quality, depth and mapping quality bias.")
+
+s_qual_depth_mqbz_filtered <- query |>
+  mutate(filter=case_when(QUAL>qual_probs[1] & 
+                            DP>dp_probs[1] & 
+                            DP<dp_probs[4] & 
+                            MQBZ>mqbz_probs[1] ~ "PASS",
+                          TRUE ~ "FAIL"))
+
+```
+
+\newpage
+```{r thresholds tables, echo=FALSE}
+
+pass_tab <- apply(s_qual_depth_mqbz_filtered[s_qual_depth_mqbz_filtered$filter=="PASS", c("QUAL","DP","MQBZ")], 2, summary)
+fail_tab <- apply(s_qual_depth_mqbz_filtered[s_qual_depth_mqbz_filtered$filter=="FAIL", c("QUAL","DP","MQBZ")], 2, summary)
+
+knitr::kable(list(fail_tab, pass_tab),
+  "html",
+  booktab=TRUE,
+  align='c',
+  caption = "Summary statistics of SNPs that failed (left) and passed (right) filtering.") |>
+  column_spec(1:2,width="8cm") |>
+  kable_styling(full_width=F, position="center") 
+```
+
+```{r plot tresholds, fig.align='center', echo=FALSE, fig.cap="Comparative view of variants by quality and mapping quality bias. The color reflects depth where darker colors represent the deepest depth SNPs. A transparency has been applied, so areas of opacity reflect a higher density of SNPs with similar quality and mapping quality bias."}
+
+ggplot(s_qual_depth_mqbz_filtered) +
+  geom_point(aes(QUAL,MQBZ,color=DP),
+              alpha =0.3) +
+  scale_color_viridis_c(direction = -1,
+                        option="magma") + 
+  facet_grid(~filter) + 
+  theme_light() 
+```
+
+```{r subset retention, results='asis', echo=FALSE}
+cat ("\n   \n  ") 
+paste0("Number of SNP variants retained: ", sum(s_qual_depth_mqbz_filtered$filter=="PASS"), "  \n") |> 
+  cat()
+paste0("Number of SNP variants removed: ", sum(s_qual_depth_mqbz_filtered$filter=="FAIL"),  "  \n") |>
+  cat()
+
+
+```
+
+\newpage 
+
+Minor allele frequency as a parameter for filtering is contested. We will create a dataset with MAF as a filter, and one without. A very low MAF of 0.05 will be applied. 
+
+```{r, echo =FALSE, fig.cap="Density of minor allele frequencies observed in our SNP subset." , fig.align='center', out.width='75%'}
+
+ggplot(mafdf) +
+  geom_density(aes(Frequency), fill = "green", colour = "black", alpha = 0.3) +
+  xlab("Minor allele frequency") + 
+  ylab("Density") + 
+  theme_light()
+
+```
+
+```{r snp outputs, echo =FALSE}
+
+parameters <- c('qual','mindepth','maxdepth','minMQBZ')
+values <- c(qual_probs[1],dp_probs[1],dp_probs[4],mqbz_probs[1])
+
+outparams <- data.frame(row.names=parameters,values)
+write.csv(outparams, file="parameters_snps.csv")
+
+```
+
+\newpage
+
+## **Indels** 
+
+```{r indel inputs, echo=FALSE}
+
+indelmetrics<-paste0("indels-metrics-",rundate,".tsv")
+iquery <- read.csv(indelmetrics,
+          sep = "\t",
+          header=FALSE,
+          col.names = c("CHROM","POS","QUAL","DP","IMF")) 
+
+iquery[,c("QUAL","DP","IMF")] <- apply(iquery[c("QUAL","DP","IMF")],2,as.numeric) 
+
+apply(iquery[,c("QUAL","DP","IMF")], 2, summary) |>
+  knitr::kable(caption = "Summary statistics of indel quality metrics in this subset.")
+
+```
+
+
+```{r, echo=FALSE,  fig.show="hold", out.width="50%", fig.cap="1. Density plot of indel depths. The dashed lines demarcate the lowest and highest 2.5% of depths. 2. Density plot of indel quality scores. 3. IMF is the fraction of reads that support an indel call. IMF as a function of quality shows that they tend to increase together. Removing indels with IMF lower than 0.1 is recommended by Samtools documentation."}
+
+idp_den<- ggplot(iquery) +
+  geom_density(aes(DP), fill ="navy", alpha =0.3, colour ="navy") +
+  xlab("Depth") + 
+  ylab("Density") +
+  xlim(0,quantile(iquery$DP,prob=0.99)) +
+  theme_light() +
+  geom_vline(xintercept=quantile(iquery$DP,prob=0.975),
+             linetype="dashed") +
+  geom_vline(xintercept=quantile(iquery$DP,prob=0.025),
+             linetype="dashed") + 
+  annotate("text",
+          x=(quantile(iquery$DP,prob=0.025) + 50),
+          y=max(density(iquery$DP)$y),
+          label="2.5%") +
+  annotate("text",
+          x=(quantile(iquery$DP,prob=0.975) + 50), 
+          y=max(density(iquery$DP)$y),
+          label="97.5%") 
+
+idp_den |>
+  plot() |>
+  suppressWarnings()
+
+iqual_den <- ggplot(iquery) + 
+  geom_density(aes(QUAL),fill="green", color="black",alpha=0.4) +
+  xlab("Quality") +
+  theme_light()
+iqual_den |>
+  plot() |>
+  suppressWarnings()
+
+## MQBZ less reliable a metric for indels according to samtools documentation - recommended IMF instead. 
+## Indels with low IMF values also tend towards lower quality scores. We will just apply an IMF of 0.1, as recommended by the samtools documentation. 
+imf_plot<-ggplot(iquery) +
+  geom_point(aes(QUAL,IMF), alpha =0.3,color="steel blue") +
+  scale_y_continuous(transform="log2") +
+  ylab("Log transformed IMF") +
+  xlab("Quality") +
+  geom_hline(yintercept=0.1, 
+             linetype="dashed") +
+  annotate("text",
+           x = quantile(iquery$QUAL,probs=0.9), 
+           y=0.09,
+           label="Recommend IMF minimum") +
+  theme_light()
+imf_plot |>
+  plot() |>
+  suppressWarnings()
+
+```
+
+\newpage 
+```{r indel filters, echo=FALSE, fig.align='center', fig.cap="Indels that failed (left) and passed (right) filtering by variant quality, depth and IMF metrics."}
+
+iqual_probs<-quantile(iquery$QUAL,probs=c(0.025,0.05,0.95,0.975))
+idp_probs<-quantile(iquery$DP,probs=c(0.025,0.05,0.95,0.975))
+
+data.frame(iqual_probs,idp_probs) |>
+  knitr::kable(caption = "Potential thresholds for removing outliers by quality, depth and mapping quality bias.")
+
+i_qual_depth_imf_filtered <- iquery |>
+  mutate(filter=case_when(QUAL>iqual_probs[1] & 
+                            DP>idp_probs[1] & 
+                            DP<idp_probs[4] & 
+                            IMF>0.1 ~ "PASS",
+                          TRUE ~ "FAIL"))
+
+ggplot(i_qual_depth_imf_filtered) +
+  geom_point(aes(QUAL,DP,color=IMF),
+              alpha =0.3) +
+  scale_color_viridis_c(direction = -1,
+                        option="magma") + 
+  facet_grid(~filter) + 
+  theme_light() 
+```
+
+```{r, results='asis', echo=FALSE}
+ipass_tab <- apply(i_qual_depth_imf_filtered[i_qual_depth_imf_filtered$filter=="PASS", c("QUAL","DP","IMF")], 2, summary)
+ifail_tab <- apply(i_qual_depth_imf_filtered[i_qual_depth_imf_filtered$filter=="FAIL", c("QUAL","DP","IMF")], 2, summary)
+
+knitr::kable(list(ifail_tab, ipass_tab),
+  "html",
+  booktab=TRUE,
+  align='c',
+  caption = "Summary statistics of Indels that failed (left) and passed (right) filtering.") |>
+  column_spec(c(1:2),width="8cm") |>
+  kable_styling(full_width=F, position="center") 
+
+cat ("\n  ") 
+paste0("Number of indel variants retained from the subset: ", sum(i_qual_depth_imf_filtered$filter=="PASS"), "  \n") |> 
+  cat()
+paste0("Number of indel variants removed from the subset: ", sum(i_qual_depth_imf_filtered$filter=="FAIL"),  "  \n") |>
+  cat()
+
+```
+
+```{r indel output, include=FALSE}
+
+parameters <- c('qual','mindepth','maxdepth','minIMF')
+values <- c(iqual_probs[1],idp_probs[1],idp_probs[4],0.1)
+
+outparams <- data.frame(row.names=parameters,values)
+write.csv(outparams, file="parameters_indels.csv")
+
+```
+
+## ***References***
+
+1. https://www.nature.com/articles/s41525-021-00227-3
+2. https://www.htslib.org/workflow/filter.html
+3. https://speciationgenomics.github.io/filtering_vcfs/
+
