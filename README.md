@@ -6,6 +6,8 @@ This README details the four modules of the WGS pipeline developed for rare vari
 3. Variant calling and filtering with GATK.
 4. Variant calling and filtering with bcftools.
 
+Modules 3 and 4 can happen in parallel. 
+
 <br />
 
 <div align="center">
@@ -43,6 +45,7 @@ Most of our files come from NISC. We typically get three files of importance (th
 
 With the current pipeline configuration, I recommend setting up your working directory as such: 
 
+```
 [sample 1]/
   *bam
   *bam.bai
@@ -51,9 +54,11 @@ With the current pipeline configuration, I recommend setting up your working dir
   *bam.bai 
 [sample n]/
   *bam 
-  *bam.bai 
+  *bam.bai
+batch-[rundate].txt
+```
+Where the batch text file contains one sample ID per line, which corresponds to their directory names
 
-batch-[rundate].txt - contains one sample ID per line, which corresponds to their directory names 
 
 ## The pipeline 
 
@@ -78,7 +83,7 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [lo
   -l pass the path to the directory containing the bam; allows user to loop through a text file containing locations (like a batch)
   -b pass the bam file 
 ```
-
+<br />
 The -l option was implemented here as a temporary solution to passing batches or pointing to BAMs in another directory besides the working directory. For the -l to work on a batch, you currently need to loop through a textfile with one location per line. It will work best if you use the prescribed working directory structure in "Inputs", where sample directories are named for sample IDs. This is because the -l looks for anything named *bam in the directory provided. For example: 
 
 ```
@@ -97,15 +102,27 @@ Base recalibration models the base quality scores using prior knowledge of varia
   <img src="https://github.com/user-attachments/assets/0cd58f81-0d37-46cc-a711-7d775abab496">
 </div>
 
+<br />
+
 ```
 sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:seconds alignment_cleanup.sh [arguments]
 
   -l pass the path to the directory containing the bam; allows user to loop through a text file containing locations (like a batch)
   -b merged bam alignment
   -r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)
-  -h
+  -h help
 ```
+The -l here works in the same way as in module 1, where you have to loop through the textfile. 
 
+### Module 3: Variant calling with GATK 
+
+GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel. Once the haplotype called gVCFs are done, I combine chromosome gVCFs across samples with GATKs CombineGVCF, resulting in 24 gVCFs. Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped. 
+
+After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model is then applied back to the VCFs to divide variants into likelihood "tranches". 
+
+<div align="center">
+  <img width=900 src="https://github.com/user-attachments/assets/8545bc01-8023-477e-a8dc-f161ff941500">
+</div>
 
 ## Cumulative outputs
 
@@ -115,11 +132,11 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:
     [sample].reverted.bam
     [sample].mergedaln.bam
     [sample].mkAdapter.metrics.txt
+    [sample].originalaln.stats
+    [sample].mergedaln.stats
   qc_out/
     [sample].reverted_fastqc.html
     [sample].reverted_fastqc.zip
-    [sample].originalaln.stats
-    [sample].mergedaln.stats
     
 ```
 ##  Batch size and memory allocation 
@@ -134,5 +151,6 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:
 2. https://gatk.broadinstitute.org/hc/en-us/articles/4403687183515--How-to-Generate-an-unmapped-BAM-from-FASTQ-or-aligned-BAM
 3. https://gatk.broadinstitute.org/hc/en-us/articles/360039568932--How-to-Map-and-clean-up-short-read-sequence-data-efficiently
 4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
+5. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
 
 
