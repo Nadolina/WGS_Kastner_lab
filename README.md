@@ -41,6 +41,20 @@ Most of our files come from NISC. We typically get three files of importance (th
 1. The [sample].bam and its index, [sample].bam.bai
 2. GRCh38 with decoys and other accompanying files (/data/Kastner_PFS/references/HG38/) (1)
 
+With the current pipeline configuration, I recommend setting up your working directory as such: 
+
+[sample 1]/
+  *bam
+  *bam.bai
+[sample 2]/
+  *bam 
+  *bam.bai 
+[sample n]/
+  *bam 
+  *bam.bai 
+
+batch-[rundate].txt - contains one sample ID per line, which corresponds to their directory names 
+
 ## The pipeline 
 
 ### Module 1: Re-alignment 
@@ -52,6 +66,46 @@ Samtools stats is run on both the original and final bam. Fastqc is run on the r
 <div align="center">
   <img src="https://github.com/user-attachments/assets/5df34f9f-9167-4ac3-8ec9-7742378c3a49">
 </div>
+
+```
+batch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -b [original bam]
+  OR
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [location]
+
+  You need to pass EITHER -b or -l, but NOT BOTH.
+  The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided.
+
+  -l pass the path to the directory containing the bam; allows user to loop through a text file containing locations (like a batch)
+  -b pass the bam file 
+```
+
+The -l option was implemented here as a temporary solution to passing batches or pointing to BAMs in another directory besides the working directory. For the -l to work on a batch, you currently need to loop through a textfile with one location per line. It will work best if you use the prescribed working directory structure in "Inputs", where sample directories are named for sample IDs. This is because the -l looks for anything named *bam in the directory provided. For example: 
+
+```
+while read loc; do sbatch --mem=129g --cpus-per-task=16 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $loc ; done < HC-batch-091324.txt
+```
+
+It is on my to-do list to wrap these scripts such as to accept a batch list as input. 
+
+### Module 2: Alignment cleanup 
+
+This module follows instructions from GATK's pre-variant calling recommendations (4). Alignment cleanup involves marking duplicate read pairs and base quality score recalibration. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. Here we fully remove duplicate read pairs. 
+
+Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends running a second round of BQSR for quality assurance. The second model isn't applied, but instead we compare the models with CovariateAnalysis, which produces a pdf summary of the results. The documentation does not explain what the QC value is, but I assume it is to confirm that a the first model was adequate for correction and that a second would be of little benefit, or in fact introduce over-correction. 
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/0cd58f81-0d37-46cc-a711-7d775abab496">
+</div>
+
+```
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:seconds alignment_cleanup.sh [arguments]
+
+  -l pass the path to the directory containing the bam; allows user to loop through a text file containing locations (like a batch)
+  -b merged bam alignment
+  -r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)
+  -h
+```
+
 
 ## Cumulative outputs
 
@@ -68,11 +122,17 @@ Samtools stats is run on both the original and final bam. Fastqc is run on the r
     [sample].mergedaln.stats
     
 ```
+##  Batch size and memory allocation 
 
+## Laundry list 
+
+1. Implement a batching solution for modules one and two. 
 
 ## References 
 
 1. https://gatk.broadinstitute.org/hc/en-us/articles/360035890811-Resource-bundle
 2. https://gatk.broadinstitute.org/hc/en-us/articles/4403687183515--How-to-Generate-an-unmapped-BAM-from-FASTQ-or-aligned-BAM
+3. https://gatk.broadinstitute.org/hc/en-us/articles/360039568932--How-to-Map-and-clean-up-short-read-sequence-data-efficiently
+4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
 
 
