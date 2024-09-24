@@ -76,7 +76,7 @@ gatk ApplyBQSR -bqsr bqsr_1.table -I $markdupssam -O bqsr_1.bam --tmp-dir /lscra
 gatk BaseRecalibrator -R $ref -I bqsr_1.bam -O bqsr_2.table --known-sites $knownindels --known-sites $knownsnps --known-sites $millsgold --tmp-dir /lscratch/${SLURM_JOB_ID} > log-bqsr-2-${SLURM_JOB_ID}.txt 2>&1 
 
 # Generating some QC plots so we can see how BQSR improves the quality scoring. 
-gatk AnalyzeCovariates -before bqsr_1.table -after bqsr_2.table -plots qc_out/AnalyzeCovariates.pdf 2>&1 
+gatk AnalyzeCovariates -before bqsr_1.table -after bqsr_2.table -plots AnalyzeCovariates.pdf 2>&1 
 
 rm $markdupssam ##removing the intermediate mark duplicates bam 
 set +x
