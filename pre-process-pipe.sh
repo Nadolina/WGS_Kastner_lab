@@ -117,7 +117,7 @@ revert
 fastqc -o qc_out ${OUTDIR}/${prefix}.reverted.bam &
 mkAdapters 
 alignment
-samtools stats -@${SLURM_CPUS_PER_TASK} ${OUTDIR}/${prefix}.mergedaln.bam > ${OUTDIR}/${prefix}.mergedaln.stats ## generating stats of the original and new alignments. 
-samtools stats -@${SLURM_CPUS_PER_TASK} ${alnbam} > ${OUTDIR}/${prefix}.originalaln.stats
+samtools stats -@${SLURM_CPUS_PER_TASK} ${OUTDIR}/${prefix}.mergedaln.bam > qc_out/${prefix}.mergedaln.stats ## generating stats of the original and new alignments. 
+samtools stats -@${SLURM_CPUS_PER_TASK} ${alnbam} > qc_out/${prefix}.originalaln.stats
 rm $OUTDIR/${prefix}.mkAdapter.bam
 set +x 
