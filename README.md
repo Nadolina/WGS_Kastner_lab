@@ -62,6 +62,10 @@ Samtools stats is run on both the original and final bam. Fastqc is run on the r
     [sample].mergedaln.bam
     [sample].mkAdapter.metrics.txt
   qc_out/
+    [sample].reverted_fastqc.html
+    [sample].reverted_fastqc.zip
+    [sample].originalaln.stats
+    [sample].mergedaln.stats
     
 ```
 
