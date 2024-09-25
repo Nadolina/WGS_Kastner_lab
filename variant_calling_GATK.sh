@@ -1,5 +1,8 @@
 #!/bin/sh
 
+##References
+# 1. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
+
 set -e 
 
 Help()
@@ -31,7 +34,7 @@ chrlist=($(seq 1 1 22) "X" "Y")
 ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 dbsnp=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.dbsnp138.vcf.gz
 
-scriptpth=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+scriptpth="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 ## FUNCTIONS -----
 
@@ -41,7 +44,7 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
     inbam=$1 
     id=$2 
 
-    echo "#SWARM -t 4 -g 20 --time=4:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
+    echo "#SWARM -t 8 -g 32 --time=08:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
 
     for value in "${chrlist[@]}" ## Looping through a list of chromosome names to generate lines for a swarm script that will run haplotype caller on each chromosome in parallel.
     do 
@@ -63,7 +66,7 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
 ## This function creates a swarm to combine the GVCFs for each chromosome across the samples in our batch 
 generate_combineGVCF_swarm() {
 
-    echo "#SWARM -t 4 -g 20 --time=4:00:00" > ${PWD}/combinedGVCFs-${rundate}.swarm
+    echo "#SWARM -t 8 -g 32 --time=08:00:00" > ${PWD}/combinedGVCFs-${rundate}.swarm
 
     mkdir -p ${PWD}/combinedGVCFs_${rundate}
     mkdir -p ${PWD}/conbinedGVCFs_logs
@@ -92,7 +95,7 @@ generate_combineGVCF_swarm() {
 
 generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the batch chromosomes in parallel
 
-    echo "#SWARM -t 4 -g 20 --time=4:00:00" > ${PWD}/genotypeGVCFs-${rundate}.swarm
+    echo "#SWARM -t 8 -g 32 --time=08:00:00" > ${PWD}/genotypeGVCFs-${rundate}.swarm
 
     mkdir -p ${PWD}/genotypedVCFs_${rundate}
     mkdir -p ${PWD}/genotypeGVCFs_logs
@@ -123,43 +126,45 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
 
 set -x 
 
-jids=""
-while IFS="" read -r id || [ -n "$id" ] 
-do 
-    bam="${PWD}/${id}/${id}_out/bqsr_1.bam"
+# jids=""
+# while IFS="" read -r id || [ -n "$id" ] 
+# do 
+#     bam="${PWD}/${id}/${id}_out/bqsr_1.bam"
 
-    mkdir -p ${PWD}/${id}/${id}_out/logs_${rundate} ##Creating the necessary subdirectories for each sample 
-    mkdir -p ${PWD}/${id}/${id}_out/gvcfs_${rundate} 
+#     mkdir -p ${PWD}/${id}/${id}_out/logs_${rundate} ##Creating the necessary subdirectories for each sample 
+#     mkdir -p ${PWD}/${id}/${id}_out/gvcfs_${rundate} 
 
-    generate_HC_swarm ${bam} ${id}
+#     generate_HC_swarm ${bam} ${id}
 
-    jid=$(swarm --module GATK --gres=lscratch:100 -g 20 -t 4 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
-    echo $jid
-    jids+=`echo "$jid "`
+#     jid=$(swarm --module GATK --gres=lscratch:100 -g 32 -t 8 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
+#     echo $jid
+#     jids+=`echo "$jid "`
 
-done < $batchfile
+# done < $batchfile
 
-jidlist=`echo $jids | sed 's/ /:/g'` ## Creating a list of jobids to use as dependencies for the next job, so that combineGVCFs does not start running until all HC jobs are complete 
-printf "Combining GVCFs dependent on following jobs completing: $jids\n" 
+# jidlist=`echo $jids | sed 's/ /:/g'` ## Creating a list of jobids to use as dependencies for the next job, so that combineGVCFs does not start running until all HC jobs are complete 
+# printf "Combining GVCFs dependent on following jobs completing: $jids\n" 
 
-## COMBINING GVCFs ------
-## GVCFs combined by chromosome, i.e./ we combined the GVCFs for chrN from each sample in the batch, resulting in 24 GVCFs representing all samples 
-## One swarm job per chromosome
+# ## COMBINING GVCFs ------
+# ## GVCFs combined by chromosome, i.e./ we combined the GVCFs for chrN from each sample in the batch, resulting in 24 GVCFs representing all samples 
+# ## One swarm job per chromosome
 
-generate_combineGVCF_swarm
-combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:100 -g 20 -t 4 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
-echo $combine_jid
-printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. Genotyping will began upon completion of $combine_jid\n"
+# generate_combineGVCF_swarm
+# combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:100 -g 32 -t 8 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
+# echo $combine_jid
+# printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. Genotyping will began upon completion of $combine_jid\n"
 
-## GENOTYPING GVCFs ------
-## Genotyping the chromosome-combined GVCFs 
-## One swarm job per chromosome 
+# ## GENOTYPING GVCFs ------
+# ## Genotyping the chromosome-combined GVCFs 
+# ## One swarm job per chromosome 
 
-generate_genotypeGVCFs_swarm
-genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:100 -g 24 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
-echo $genotypejid
+# generate_genotypeGVCFs_swarm
+# genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:100 -g 32 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
+# echo $genotypejid
 
-sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${scriptpth}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
+
+echo "sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${scriptpth}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}"
+# sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${scriptpth}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
 
 set +x 
 
