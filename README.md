@@ -116,13 +116,24 @@ The -l here works in the same way as in module 1, where you have to loop through
 
 ### Module 3: Variant calling with GATK 
 
-GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel. Once the haplotype called gVCFs are done, I combine chromosome gVCFs across samples with GATKs CombineGVCF, resulting in 24 gVCFs. Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped. 
+GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel (a,b). Once the haplotype called gVCFs are done, I combine chromosome gVCFs across samples with GATKs CombineGVCF, resulting in 24 gVCFs. Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped. 
 
 After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model is then applied back to the VCFs to divide variants into likelihood "tranches". 
 
 <div align="center">
-  <img width=900 src="https://github.com/user-attachments/assets/8545bc01-8023-477e-a8dc-f161ff941500">
+  <img src="https://github.com/user-attachments/assets/c7eea530-4b99-40a7-9576-b9506fbb4042">
 </div>
+
+<br />
+
+```
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile]
+
+  -b textfile of locations of directories containing original BAM; one per line 
+  -h help
+```
+
+As with previous modules, the -b mostly anticipates the structure prescribed in "Inputs", where each directory is named for it's sample ID. Unlike previous modules, -b can take the whole textfile as an input, rather than having to loop through it on the command line.
 
 ## Cumulative outputs
 
@@ -143,7 +154,8 @@ After genotyping, we then need to filter the called variants. GATK has a program
 
 ## Laundry list 
 
-1. Implement a batching solution for modules one and two. 
+1. Implement a batching solution for modules one and two.
+2. Parallelize modules 1 and 2. I think we could break alignment by chromosome or read group and carry that break through base recalibration. 
 
 ## References 
 
