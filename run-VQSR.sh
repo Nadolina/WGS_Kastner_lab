@@ -51,6 +51,7 @@ set -x
 bcftools index -t merged-${rundate}.vcf.gz 
 bcftools stats merged-${rundate}.vcf.gz > merged-${rundate}.vcf.stats
 
+mkdir -p filtered_VCFs_${rundate}
 
 ## Running a round of VQSR on the SNPs and indels separately, as recommended by Biowulf and GATK documentation. 
 gatk --java-options "-XX:ParallelGCThreads=2 -Xmx8G" VariantRecalibrator \
@@ -70,8 +71,8 @@ gatk --java-options "-XX:ParallelGCThreads=2 -Xmx8G" VariantRecalibrator \
   --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 \
   /fdb/GATK_resource_bundle/hg38/dbsnp_146.hg38.vcf.gz \
   -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR -an DP\
-  -mode SNP -O merged_SNP1.recal --tranches-file output_SNP1.tranches \
-  --rscript-file output_SNP1.plots.R \
+  -mode SNP -O filtered_VCFs_${rundate}/merged_SNP1.recal --tranches-file filtered_VCFs_${rundate}/output_SNP1.tranches \
+  --rscript-file filtered_VCFs_${rundate}/output_SNP1.plots.R \
   --tmp-dir /lscratch/${SLURM_JOB_ID} 2> ${PWD}/VQSR_logs_${rundate}/slurm-vqsrsnps-${SLURM_JOB_ID}.log 
 
 gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" VariantRecalibrator \
@@ -86,20 +87,20 @@ gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" VariantRecalibrator \
   --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 \
   /fdb/GATK_resource_bundle/hg38/dbsnp_146.hg38.vcf.gz \
   -an QD -an MQRankSum -an ReadPosRankSum -an FS -an SOR -an DP \
-  -mode INDEL -O merged_indel1.recal --tranches-file output_indel1.tranches \
-  --rscript-file output_indel1.plots.R \
+  -mode INDEL -O filtered_VCFs_${rundate}/merged_indel1.recal --tranches-file filtered_VCFs_${rundate}/output_indel1.tranches \
+  --rscript-file filtered_VCFs_${rundate}/output_indel1.plots.R \
   --tmp-dir /lscratch/${SLURM_JOB_ID} 2> ${PWD}/VQSR_logs_${rundate}/slurm-vqsr-indels-${SLURM_JOB_ID}.log 
 
 ## Running apply VQSR with the SNP recal file, then passing the vcf generated from this command to the applyVQSR for indels, so we have a combined snp-indels output vcf. 
 gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" ApplyVQSR \
   -V merged-$rundate.vcf.gz \
-  --recal-file merged_SNP1.recal \
+  --recal-file filtered_VCFs_${rundate}/merged_SNP1.recal \
   -mode SNP \
   -AS \
-  --tranches-file output_SNP1.tranches \
+  --tranches-file filtered_VCFs_${rundate}/output_SNP1.tranches \
   --truth-sensitivity-filter-level 99.9 \
   --create-output-variant-index true \
-  -O SNP.recalibrated_99.9.${rundate}.vcf.gz 2> ${PWD}/VQSR_logs_${rundate}/slurm-applyvqsr-snps-${SLURM_JOB_ID}.log
+  -O filtered_VCFs_${rundate}/SNP.recalibrated_99.9.${rundate}.vcf.gz 2> ${PWD}/VQSR_logs_${rundate}/slurm-applyvqsr-snps-${SLURM_JOB_ID}.log
 
 gatk --java-options "-Xmx8g -XX:ParallelGCThreads=2" ApplyVQSR \
   -V SNP.recalibrated_99.9.${rundate}.vcf.gz \
@@ -108,6 +109,6 @@ gatk --java-options "-Xmx8g -XX:ParallelGCThreads=2" ApplyVQSR \
   --tranches-file output_indel1.tranches \
   --truth-sensitivity-filter-level 99.9 \
   --create-output-variant-index true \
-  -O indel.SNP.recalibrated_99.9.${rundate}.vcf.gz 2> ${PWD}/VQSR_logs_${rundate}/slurm-applyvqsr-indels-${SLURM_JOB_ID}.log
+  -O filtered_VCFs_${rundate}/indel.SNP.recalibrated_99.9.${rundate}.vcf.gz 2> ${PWD}/VQSR_logs_${rundate}/slurm-applyvqsr-indels-${SLURM_JOB_ID}.log
  
 set +x 
