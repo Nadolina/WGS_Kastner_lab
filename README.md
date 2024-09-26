@@ -165,9 +165,42 @@ As with previous modules, the -b mostly anticipates the structure prescribed in 
 
 <img align="right" src="https://github.com/user-attachments/assets/d4e7ec8d-7904-4bd1-b688-49e314005de4">
 
-Lierature suggests using two or more variant callers, because there are several highly accurate SNP and indel callers available, and concordance between multiple callers lends confidence to  calls. In addition to GATK, this workflow performs variant calling with bcftools. This module also starts with the base recalibrated BAMs from the batch. Using the swarm functionality again, we run bcftools mpileup per chromosome, across samples, producing 24 VCFs. These VCFs are annotated with known alleles frequencies from the 1000 Genomes project, because the --prior-freqs flag is used in the bcftools call command to improve calling performance. 
+Lierature suggests using two or more variant callers, because there are several highly accurate SNP and indel callers available, and concordance between multiple callers lends confidence to  calls. In addition to GATK, this workflow performs variant calling with bcftools (7). This module also starts with the base recalibrated BAMs from the batch. Using the swarm functionality again, we run bcftools mpileup per chromosome, across samples, producing 24 VCFs. These VCFs are annotated with known alleles frequencies from the 1000 Genomes project, because the --prior-freqs flag is used in the bcftools call command to improve calling performance. 
 
-Unlike GATK, bcftools does not have a model to perform filtering. 
+<br />
+
+Unlike GATK, bcftools does not have a model to perform filtering. There are various approaches to filtering, but most tutorials and documentation recommend a hard-filtering approach. My approach was largely informed by the recommendations in (8,9). In nearly all the VCFs we have received from NISC, you can see the same set of hard filters have been applied to SNPs and indels. These are very common filtering parameters and values. 
+
+  ![image](https://github.com/user-attachments/assets/52d42b91-a062-4e3f-a992-4e35288c556b)
+
+I wanted to make our filtering workflow a little more adaptable. Instead of applying the same filtering thresholds to all of our batches, I aim to identify thresholds that are tailored to the batch, to try to mitigate changes and biases in the batch. I take a subset (1%) of SNPs and indels from each batch, and extract their variant metrics. I identify the extreme outlier values in the subset using just quantiles, and apply those back to the whole batch of variants as filtering thresholds. For SNPs, we use the following metrics: variant quality, depth and mapping quality Z-score (MQBZ). MQBZ looks at the differences in mapping quality at heterozygous sites, because significant differences at the ALT allele could indicate a false positive. For indels, quality and depth are also used, as well as IMF, which is the fraction of reads supporting an indel.  
+
+In the example below, you can see the range of quality values varies between Batch 1 and 2, with Batch 1 exhibiting on average higher quality values. If we were apply the same quality filter to both batches, we would remove more variants in Batch 2 than 1, and there is an increased chance we are removing true variants. The motivation is to try to accomodate those metric variations between batches, to retain as many true variants as possible. While this does mean the filtering thresholds won't be standardize and this can complicate methods reporting a bit, I expect that metrics should hold relatively steady between batches and so thresholds should be similar. This approach is more of a contingency than anything. 
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/62bd4413-f982-483e-96db-c898d5c36ae1">
+</div>
+
+<br />
+
+Because this approach varies with each batch, I wanted to ensure we had QC outputs describing the thresholds identified. So, the filtering program produces a report on the subset statistics, in the form of an HTML file so it can be viewed in any browser. Below is an example of one of the figures in the HTML report. 
+
+<br />
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/5c433fa2-e04e-44f8-9749-027a0f671d5d">
+</div>
+
+<br />
+
+```
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch files with sample IDs]
+
+-b  the same batch file as passed to GATK, one sample ID/location per line 
+```
+
+<br />
+
 
 </details>
 
@@ -201,4 +234,7 @@ Unlike GATK, bcftools does not have a model to perform filtering.
 4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
 5. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
 6. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
+7. https://samtools.github.io/bcftools/bcftools.html
+8. https://www.htslib.org/workflow/filter.html
+9. https://speciationgenomics.github.io/filtering_vcfs/
 
