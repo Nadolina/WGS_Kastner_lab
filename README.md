@@ -14,6 +14,13 @@ Modules 3 and 4 can happen in parallel.
   <img src="https://github.com/user-attachments/assets/4fa4b648-50c5-44e8-8d72-dd2d4d546bca"> 
 </div>
 
+
+<details> 
+
+<summary>
+Getting started with the piepline
+</summary>
+
 ## Dependencies
 
 ```
@@ -59,12 +66,16 @@ batch-[rundate].txt
 ```
 Where the batch text file contains one sample ID per line, which corresponds to their directory names
 
+</details>
 
 ## The pipeline 
 
+<details>
+<summary>Module 1: Re-alignment to GRCh38</summary>
+
 ### Module 1: Re-alignment 
 
-The process of extract reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipeline the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
+The process of extracting reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipeline the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
 
 Samtools stats is run on both the original and final bam. Fastqc is run on the reverted bam to look at the quality of the sequence reads. 
 
@@ -92,6 +103,11 @@ while read loc; do sbatch --mem=129g --cpus-per-task=16 --gres=lscratch:400  $SC
 
 It is on my to-do list to wrap these scripts such as to accept a batch list as input. 
 
+</details>
+
+<details>
+<summary>Module 2: Alignment cleanup</summary>
+
 ### Module 2: Alignment cleanup 
 
 This module follows instructions from GATK's pre-variant calling recommendations (4). Alignment cleanup involves marking duplicate read pairs and base quality score recalibration. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. Here we fully remove duplicate read pairs. 
@@ -114,11 +130,16 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:
 ```
 The -l here works in the same way as in module 1, where you have to loop through the textfile. 
 
+</details>
+
+<details>
+<summary>Module 3: Variant calling with GATK</summary>
+
 ### Module 3: Variant calling with GATK 
 
-GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel (a,b). Once the haplotype called gVCFs are done, I combine chromosome gVCFs across samples with GATKs CombineGVCF, resulting in 24 gVCFs. Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped. 
+GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel (A). I combine chromosome gVCFs produced by HaplotypeCaller across samples with GATKs CombineGVCFs, resulting in 24 gVCFs (B). Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped (C). 
 
-After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model is then applied back to the VCFs to divide variants into likelihood "tranches". 
+After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model works is data greedy, so we combined all the gentotyped CHRn-VCFs into a single VCF (D). Then we generate one VariantRecalibrator model for SNPs and another for indels (E,F), as recommended by GATK documentation (6). The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first (G), and then the indel model (H), resulting in a fully variant quality score recalibrated VCF. 
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/c7eea530-4b99-40a7-9576-b9506fbb4042">
@@ -134,6 +155,17 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b
 ```
 
 As with previous modules, the -b mostly anticipates the structure prescribed in "Inputs", where each directory is named for it's sample ID. Unlike previous modules, -b can take the whole textfile as an input, rather than having to loop through it on the command line.
+
+</details>
+
+<details>
+<summary>Module 4: Variant calling with bcftools </summary>
+
+### Module 4: Variant calling with bcftools
+
+<img align="right" src="https://github.com/user-attachments/assets/d4e7ec8d-7904-4bd1-b688-49e314005de4">
+
+</details>
 
 ## Cumulative outputs
 
@@ -164,5 +196,5 @@ As with previous modules, the -b mostly anticipates the structure prescribed in 
 3. https://gatk.broadinstitute.org/hc/en-us/articles/360039568932--How-to-Map-and-clean-up-short-read-sequence-data-efficiently
 4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
 5. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
-
+6. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
 
