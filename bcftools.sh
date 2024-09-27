@@ -62,7 +62,7 @@ do
 		-a AD,DP,SP \
 		-o bcftools_${rundate}/mpileup-${chrnum}-${rundate}.vcf.gz \
 		-Oz --threads 8 \
-		2> ${PWD}/bcftools_logs/mpileup-${chrnum}-${rundate}-\${SLURM_JOB_ID}.log; bcftools index -t --threads 8 -o bcftools_out/mpileup-${chrnum}-${rundate}.vcf.gz.tbi bcftools_out/mpileup-${chrnum}-${rundate}.vcf.gz\n" >> mpileup-${rundate}.swarm
+		2> ${PWD}/bcftools_logs/mpileup-${chrnum}-${rundate}-\${SLURM_JOB_ID}.log; bcftools index -t --threads 8 -o bcftools_${rundate}/mpileup-${chrnum}-${rundate}.vcf.gz.tbi bcftools_${rundate}/mpileup-${chrnum}-${rundate}.vcf.gz\n" >> mpileup-${rundate}.swarm
 	printf "bcftools annotate -a $thousandgAF \
 		-h $thousandgHDR \
 		-c CHROM,POS,REF,ALT,REF_AN,REF_AC \
