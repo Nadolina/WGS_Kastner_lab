@@ -95,7 +95,7 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [lo
   -b pass the bam file 
 ```
 <br />
-The -l option was implemented here as a temporary solution to passing batches or pointing to BAMs in another directory besides the working directory. For the -l to work on a batch, you currently need to loop through a textfile with one location per line. It will work best if you use the prescribed working directory structure in "Inputs", where sample directories are named for sample IDs. This is because the -l looks for anything named *bam in the directory provided. For example: 
+The -l option was implemented here as a temporary solution to passing batches, but the bam still needs to be copied into your working directory (the location) because the script moves into that directory. For the -l to work on a batch, you currently need to loop through a textfile with one location per line. It will work best if you use the prescribed working directory structure in "Inputs", where sample directories are named for sample IDs. This is because the -l looks for anything named *bam in the directory provided. For example: 
 
 ```
 while read loc; do sbatch --mem=129g --cpus-per-task=16 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $loc ; done < HC-batch-091324.txt
@@ -223,7 +223,7 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 
 ## Laundry list 
 
-1. Implement a batching solution for modules one and two.
+1. Implement a batching solution for modules one and two. The -l in modules 1 and 2 serves as a bit of a work-around to batching. The problem with the current set up is you need to copy the bam and pre-make working directories for each sample. I think I will wrap this such that it a) allows the user to point to a bam not in the working directory and b) has a second mandatory flag for the sample ID, so that creation of the sample ID-named working directory is standardized. 
 2. Parallelize modules 1 and 2. I think we could break alignment by chromosome or read group and carry that break through base recalibration. 
 
 ## References 
