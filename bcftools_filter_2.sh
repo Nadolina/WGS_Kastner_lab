@@ -28,7 +28,7 @@ module load picard/3.2.0
 # module load vcftools
 
 rundate=`date +'%m%d%y'`
-cd bcftools_${rundate}
+cd ${vcfdir}
 
 ## merging the VCF and getting the number of variants identified across all chromosomes and samples 
 vcflist=`ls ${vcfdir} | grep '.vcf.gz$' | grep '^call'| sort -V`
