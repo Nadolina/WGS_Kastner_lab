@@ -69,6 +69,7 @@ out="stats/snp-out"
 bcftools query -f '%CHROM\t%POS\t%QUAL\t%DP\t%MQBZ' subset-bcftools-snps-$rundate.vcf.gz -o snp-metrics-$rundate.tsv 
 bcftools query -f '%CHROM\t%POS\t%QUAL\t%DP\t%IMF' subset-bcftools-indels-$rundate.vcf.gz -o indels-metrics-$rundate.tsv 
 
+echo 'Rscript -e "rmarkdown::render('/data/Kastner_PFS/scripts/pipelines/WGS_Kastner_lab/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"'
 Rscript -e "rmarkdown::render('/data/Kastner_PFS/scripts/pipelines/WGS_Kastner_lab/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"
 
 qual=`cut -f2 -d ',' parameters_snps.csv| awk 'NR==2'`
@@ -79,7 +80,7 @@ maxMQBZ=`cut -f2 -d ',' parameters_snps.csv | awk 'NR==6'`
 
 filters=`echo "QUAL < $qual || INFO/DP < $mindepth || INFO/DP > ${maxdepth} || MQBZ < ${minMQBZ}"`
 
-echo "bcftools view -e "${filters}" --min-af 0.05 --types snps -O z -o filter-nomaf-snps-$rundate.vcf.gz $mergevcf "
+echo "bcftools view -e "${filters}" --min-af 0.05 --types snps -O z -o filter-maf-snps-$rundate.vcf.gz $mergevcf "
 bcftools view -e "${filters}" --min-af 0.05 --types snps -O z -o filter-maf-snps-$rundate.vcf.gz $mergevcf 
 echo "bcftools view -e "${filters}" --types snps -O z -o filter-nomaf-snps-$rundate.vcf.gz $mergevcf" 
 bcftools view -e "${filters}" --types snps -O z -o filter-nomaf-snps-$rundate.vcf.gz $mergevcf
@@ -90,4 +91,6 @@ imaxdepth=`cut -f2 -d ',' parameters_indels.csv| awk 'NR==4'`
 imf=`cut -f2 -d ',' parameters_indels.csv| awk 'NR==5'`
 
 ifilters=`echo "QUAL < $iqual || INFO/DP < $imindepth || INFO/DP > ${imaxdepth} || IMF < 0.1"`
+
+echo "bcftools view -e "${ifilters}" --types indels -O z -o filter-indels-$rundate.vcf.gz $mergevcf"
 bcftools view -e "${ifilters}" --types indels -O z -o filter-indels-$rundate.vcf.gz $mergevcf 
