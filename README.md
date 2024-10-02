@@ -224,7 +224,8 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 ## Laundry list 
 
 1. Implement a batching solution for modules one and two. The -l in modules 1 and 2 serves as a bit of a work-around to batching. The problem with the current set up is you need to copy the bam and pre-make working directories for each sample. I think I will wrap this such that it a) allows the user to point to a bam not in the working directory and b) has a second mandatory flag for the sample ID, so that creation of the sample ID-named working directory is standardized. 
-2. Parallelize modules 1 and 2. I think we could break alignment by chromosome or read group and carry that break through base recalibration. 
+2. Parallelize modules 1 and 2. I think we could break alignment by chromosome or read group and carry that break through base recalibration.
+3. I created a renv for the rmarkdown script at the end, which is just in my own directories and is still linked for now, but it should be moved to the Kastner scripts directory. 
 
 ## References 
 
