@@ -18,7 +18,7 @@ Modules 3 and 4 can happen in parallel.
 <details> 
 
 <summary>
-Getting started with the piepline
+Getting started with the piepline - click on the arrow dropdown to review dependencies and inputs for this pipeline. 
 </summary>
 
 ## Dependencies
@@ -28,6 +28,8 @@ picard/3.2.0
 bwa-mem/2 2.2.1
 fastqc/0.12.1
 samtools/1.19
+GATK/4.6.0.0
+bcftools/1.19
 ```
 
 ## Where do we start?
