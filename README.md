@@ -33,6 +33,8 @@ bcftools/1.19
 R
 ```
 
+**You will also need the dependencies managed by a renv that can be found here: https://github.com/Nadolina/WGS-renv.git**
+
 ## Where do we start?
 
 ```
