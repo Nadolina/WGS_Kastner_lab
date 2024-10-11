@@ -30,6 +30,7 @@ fastqc/0.12.1
 samtools/1.19
 GATK/4.6.0.0
 bcftools/1.19
+R
 ```
 
 ## Where do we start?
