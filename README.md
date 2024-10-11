@@ -33,7 +33,21 @@ bcftools/1.19
 R
 ```
 
-**You will also need the dependencies managed by a renv that can be found here: https://github.com/Nadolina/WGS-renv.git**
+**You will also need the dependencies managed by a renv that can be found here: https://github.com/Nadolina/WGS-renv.git.** If you plan to copy the pipeline to another location, please follow the recommendations in (10) to clone the renv. You would then also need to modify the path to the renv in the Rmd. If you are in the Kastner group and using the shared installation of the pipeline, you do not need to clone the renv as there is already a shared clone. 
+
+If you so choose, you can install the R packages manually instead, but this does not guarantee versioning. You will need: 
+
+```
+ggplot2
+vcfR
+readr
+tidyverse
+data.table
+dplyr
+kableExtra
+stringr
+```
+
 
 ## Where do we start?
 
@@ -243,4 +257,6 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 7. https://samtools.github.io/bcftools/bcftools.html
 8. https://www.htslib.org/workflow/filter.html
 9. https://speciationgenomics.github.io/filtering_vcfs/
+10. https://rstudio.github.io/renv/articles/renv.html
+
 
