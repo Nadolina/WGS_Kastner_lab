@@ -33,7 +33,7 @@ ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 thousandgAF=/data/Kastner_PFS/references/1000genomes/ALL.wgs.shapeit2_integrated_snvindels_v2a.GRCh38.27022019.AFs.tab.gz
 thousandgHDR=/data/Kastner_PFS/references/1000genomes/ALL.wgs.shapeit2_integrated_snvindels_v2a.GRCh38.27022019.AFs.hdr
 
-scriptpth="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+scriptpth=`$(dirname "$0")`
 
 echo "#SWARM -g 32 -t 16 --time=12:00:00" > mpileup-${rundate}.swarm
 echo "#SWARM -g 32 -t 8 --time=06:00:00" > annotate-${rundate}.swarm

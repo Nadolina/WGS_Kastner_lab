@@ -12,7 +12,7 @@ knitr::opts_knit$set(root.dir = params$myargs, fig.pos = "H", out.extra = "")
 
 ```{r packages, include=FALSE}
 
-renv::load("/data/brajukanm/envs")
+renv::load("/data/Kastner_PFS/scripts/pipelines/WGS-renv")
 
 library(ggplot2)
 library(vcfR)
