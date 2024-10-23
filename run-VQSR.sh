@@ -105,8 +105,8 @@ gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" ApplyVQSR \
 gatk --java-options "-Xmx8g -XX:ParallelGCThreads=2" ApplyVQSR \
   -V filtered_VCFs_${rundate}/SNP.recalibrated_99.9.${rundate}.vcf.gz \
   -mode INDEL \
-  --recal-file merged_indel1.recal \
-  --tranches-file output_indel1.tranches \
+  --recal-file filtered_VCFs_${rundate}/merged_indel1.recal \
+  --tranches-file filtered_VCFs_${rundate}/output_indel1.tranches \
   --truth-sensitivity-filter-level 99.9 \
   --create-output-variant-index true \
   -O filtered_VCFs_${rundate}/indel.SNP.recalibrated_99.9.${rundate}.vcf.gz 2> ${PWD}/VQSR_logs_${rundate}/slurm-applyvqsr-indels-${SLURM_JOB_ID}.log
