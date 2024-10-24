@@ -31,6 +31,9 @@ rundate=`date +'%m%d%y'`
 cd ${vcfdir}
 printf "Working in ${vcfdir}.\n" 
 
+scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
+sourcedir="$(dirname $scriptpth)"
+
 ## merging the VCF and getting the number of variants identified across all chromosomes and samples 
 vcflist=`ls | grep '.vcf.gz$' | grep '^call'| sort -V`
 
@@ -69,8 +72,8 @@ out="stats/snp-out"
 bcftools query -f '%CHROM\t%POS\t%QUAL\t%DP\t%MQBZ' subset-bcftools-snps-$rundate.vcf.gz -o snp-metrics-$rundate.tsv 
 bcftools query -f '%CHROM\t%POS\t%QUAL\t%DP\t%IMF' subset-bcftools-indels-$rundate.vcf.gz -o indels-metrics-$rundate.tsv 
 
-echo 'Rscript -e "rmarkdown::render('/data/Kastner_PFS/scripts/pipelines/WGS_Kastner_lab/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"'
-Rscript -e "rmarkdown::render('/data/Kastner_PFS/scripts/pipelines/WGS_Kastner_lab/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"
+echo 'Rscript -e "rmarkdown::render('$sourcedir/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"'
+Rscript -e "rmarkdown::render('$sourcedir/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"
 
 qual=`cut -f2 -d ',' parameters_snps.csv| awk 'NR==2'`
 mindepth=`cut -f2 -d ',' parameters_snps.csv| awk 'NR==3'`

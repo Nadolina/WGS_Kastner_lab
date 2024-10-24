@@ -27,13 +27,14 @@ module load bcftools/1.19
 module load samtools/1.19
 
 rundate=`date +'%m%d%y'`
-mkdir -p bcftools_${rundate}
+# mkdir -p bcftools_${rundate}
 
 ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 thousandgAF=/data/Kastner_PFS/references/1000genomes/ALL.wgs.shapeit2_integrated_snvindels_v2a.GRCh38.27022019.AFs.tab.gz
 thousandgHDR=/data/Kastner_PFS/references/1000genomes/ALL.wgs.shapeit2_integrated_snvindels_v2a.GRCh38.27022019.AFs.hdr
 
-scriptpth=`$(dirname "$0")`
+scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
+sourcedir="$(dirname $scriptpth)"
 
 echo "#SWARM -g 32 -t 16 --time=12:00:00" > mpileup-${rundate}.swarm
 echo "#SWARM -g 32 -t 8 --time=06:00:00" > annotate-${rundate}.swarm
@@ -88,6 +89,6 @@ echo "BCFtools call will run after the annotate swarm jobs with the JOBID ${anno
 
 call_jid=$(swarm --module bcftools --dependency afterok:$annotate_jid --gres=lscratch:100 -g 32 -t 8 --logdir ${PWD}/bcftools_logs call-${rundate}.swarm)
 
-sbatch --mem=64g --cpus-per-task=12 --gres=lscratch:100 --time=06:00:00 --dependency=afterok:$call_jid ${scriptpth}/bcftools_filter_2.sh -d bcftools_${rundate} 
+sbatch --mem=64g --cpus-per-task=12 --gres=lscratch:100 --time=06:00:00 --dependency=afterok:$call_jid ${sourcedir}/bcftools_filter_2.sh -d bcftools_${rundate} 
 
 

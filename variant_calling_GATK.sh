@@ -34,9 +34,8 @@ chrlist=($(seq 1 1 22) "X" "Y")
 ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 dbsnp=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.dbsnp138.vcf.gz
 
-# scriptpth="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-
-scriptpth=`$(dirname "$0")`
+scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
+sourcedir="$(dirname $scriptpth)"
 
 ## FUNCTIONS -----
 
@@ -164,7 +163,7 @@ generate_genotypeGVCFs_swarm
 genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:200 -g 32 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
 echo $genotypejid
 
-sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${scriptpth}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
+sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${sourcedir}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
 
 set +x 
 
