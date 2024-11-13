@@ -40,7 +40,7 @@ echo "#SWARM -g 32 -t 16 --time=12:00:00" > mpileup-${rundate}.swarm
 echo "#SWARM -g 32 -t 8 --time=06:00:00" > annotate-${rundate}.swarm
 echo "#SWARM -g 32 -t 8 --time=06:00:00" > call-${rundate}.swarm
 mkdir -p ${PWD}/bcftools_logs
-mkdir -p ${PWD}/bcftools_out
+mkdir -p ${PWD}/bcftools_${rundate}
 
 rm ${PWD}/bams-bcftools-call-${rundate}.txt && touch ${PWD}/bams-bcftools-call-${rundate}.txt
 while IFS="" read -r id || [ -n "$id" ]
