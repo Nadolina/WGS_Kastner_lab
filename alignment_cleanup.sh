@@ -13,13 +13,17 @@ Help()
 	echo ""
 	echo "		sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:seconds alignment_cleanup.sh [arguments]"
 	echo ""
-	echo "	You must supply -b or -l, but do not supply both."
+	echo "	You must supply just one of -b, -o or -l. The multiple input options are designed to provide some flexiblity to the location of a bam file."
 	echo "	-b merged bam alignment"
 	echo " 	-l batch list of locations; instead of directly providing the merged bam, you can provide the batch list containing one sample ID on each line, corresponding to that sample's folder name."
-	echo "	   This option will then be looking for "/[sample_ID]_out/[sample ID]_out/[sample ID].mergedaln.bam", and will move into [sample ID]_out, so if your directories do not comply with that structure, use -b instead."
+	echo "	   This option will then be looking for "/[sample_ID]/[sample ID]_out/[sample ID].mergedaln.bam", and will move into [sample ID]_out, so if your directories do not comply with that structure, use -b instead."
 	echo "	   Note that the script is still designed to just take one bam at a time, so the user will have to loop through the batch list themselves, this -l just permits for that. I will internalize looping capabilities in the future."
 	echo "	   For now use something like:" 
 	echo "		while read sample; do sbatch --mem=128g --cpus-per-task=32 --gres=lscratch:500 --time=1-05:30:00 $SCRIPTS/alignment_cleanup.sh -l $sample ; done < HC-batch-091324.txt"
+	echo "	-o path to orig bam; this is based on the assumption that in the first step (pre-process-pipe.sh) the user looped through a list of paths to original bams located in a directory other than the working directory."
+	echo "	   This option will then parse that path name to find the presumed working directory name for a given sample and identify the merged bam; i.e. /[sample_ID]/[sample ID]_out/[sample ID].mergedaln.bam." 
+	echo "	   Like with the -l option, you will need to loop through the text file of original bam paths with a command like:"
+	echo "		while read sample; do sbatch --mem=128g --cpus-per-task=32 --gres=lscratch:500 --time=1-05:30:00 $SCRIPTS/alignment_cleanup.sh -o $sample ; done < HC-batch-091324.txt"	
 	echo "	-r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)"
 	echo "	-h help"
 	echo ""
@@ -28,9 +32,10 @@ Help()
 }
 
 restart='true'
-while getopts "b:l:rh" option; do
+while getopts "b:o:l:rh" option; do
    case $option in
 	b) mbam=$OPTARG ;;
+	o) origbam=$OPTARG ;;
 	l) location=$OPTARG ;;
 	r) restart='false' ;;
 	h) # display Help
@@ -39,12 +44,24 @@ while getopts "b:l:rh" option; do
    esac
 done
 
-if [ -z "$location" ]
+if [ -z "$location" ] && [ -z "$origbam" ]
 then
-	printf "no location provided, bam was provided: $alnbam\n"
+	workdir="$(realpath $(dirname $mbam))"
+	printf "Working directory: ${workdir}\n"
+	printf "Merged alignment bam: $mbam\n"
+elif [ -z "$mbam" ] && [ -z "$location" ]
+then
+	prefix=`basename $origbam | cut -f1 -d'.'`
+	printf "Directory for sample: ${prefix}\n"
+	printf "No location or merged bam provided, original bam provided: $origbam\n"
+	cd ${prefix}/${prefix}_out/
+	mbam=${prefix}.mergedaln.bam
+	printf "Merged alignment bam under the name: ${mbam}\n"
 else
+	printf "The location of the working directory was provided as: $location. Moving into ${location}/${location}_out to perform alignment post-processing.\n"
 	cd $location/"${location}_out"
 	mbam=`ls $location.mergedaln.bam`
+	printf "Merged alignment bam under the name: ${mbam}\n"
 fi 
 
 module load GATK/4.6.0.0 || fail "Could not load GATK"

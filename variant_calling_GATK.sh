@@ -12,13 +12,16 @@ Help()
 	echo ""
 	echo "To run this pipeline use the following command:"
 	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile] "
-    echo "-b    This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line."   
+    echo "-b    This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line."  
+    echo "-o    This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line."
+    echo "      The goal of this was to just reduce the need to create intermediate files and for continuity with the same batch file." 
 
 }
 
-while getopts "b:h" option; do
+while getopts "b:o:h" option; do
    case $option in
 	b) batchfile=$OPTARG ;;
+    o) origbams=$OPTARG ;;
 	h) # display Help
          Help
          exit;;
@@ -36,6 +39,18 @@ dbsnp=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.dbsnp138.vcf.gz
 
 scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
 sourcedir="$(dirname $scriptpth)"
+
+if [ -z $batchfile ]
+then
+	batch=""
+	while read path
+	do
+		prefix=`basename $path | cut -f1 -d'.'`
+		batch+="${prefix} "
+	done < ${origbams}
+else
+	batch=`cat ${batchfile}`
+fi 
 
 ## FUNCTIONS -----
 
@@ -77,11 +92,14 @@ generate_combineGVCF_swarm() {
         chrnum="chr${value}"
         
         gvcflist="" ## Creating a list of the paths to GVCFs to be combined 
-        while IFS="" read -r id || [ -n "$id" ]
+        for id in ${batch}
         do 
             chrgvcf="${PWD}/${id}/${id}_out/gvcfs_${rundate}/${chrnum}.g.vcf.gz"
             gvcflist+="-V ${chrgvcf} " 
-        done < $batchfile ## using the batchfile of sample IDs to combine chromosome gvcfs across samples 
+        done
+        ## using the batchfile of sample IDs to combine chromosome gvcfs across samples 
+
+
 
         ## one swarm line per chromosome 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
@@ -128,7 +146,7 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
 set -x 
 
 jids=""
-while IFS="" read -r id || [ -n "$id" ] 
+for id in ${batch}
 do 
     bam="${PWD}/${id}/${id}_out/bqsr_1.bam"
 
@@ -140,8 +158,7 @@ do
     jid=$(swarm --module GATK --gres=lscratch:200 -g 32 -t 8 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
     echo $jid
     jids+=`echo "$jid "`
-
-done < $batchfile
+done 
 
 jidlist=`echo $jids | sed 's/ /:/g'` ## Creating a list of jobids to use as dependencies for the next job, so that combineGVCFs does not start running until all HC jobs are complete 
 printf "Combining GVCFs dependent on following jobs completing: $jids\n" 

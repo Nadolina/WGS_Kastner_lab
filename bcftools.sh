@@ -14,9 +14,10 @@ Help()
 
 }
 
-while getopts "b:h" option; do
+while getopts "b:o:h" option; do
    case $option in
 	b) batchfile=$OPTARG ;;
+	o) origbams=$OPTARG ;;
 	h) # display Help
          Help
          exit;;
@@ -42,14 +43,30 @@ echo "#SWARM -g 32 -t 8 --time=06:00:00" > call-${rundate}.swarm
 mkdir -p ${PWD}/bcftools_logs
 mkdir -p ${PWD}/bcftools_${rundate}
 
+
+if [ -z $batchfile ]
+then
+	batch=""
+	while read path
+	do
+		prefix=`basename $path | cut -f1 -d'.'`
+		batch+="${prefix} "
+	done < ${origbams}
+else
+	batch=`cat ${batchfile}`
+fi 
+
+echo "The following samples have been found in your batch: ${batch}"
+
 rm ${PWD}/bams-bcftools-call-${rundate}.txt && touch ${PWD}/bams-bcftools-call-${rundate}.txt
-while IFS="" read -r id || [ -n "$id" ]
+for id in ${batch}
 do 
     printf "${PWD}/${id}/${id}_out/bqsr_1.bam\n" >> ${PWD}/bams-bcftools-call-${rundate}.txt
 	if [ ! -f ${PWD}/${id}/${id}_out/bqsr_1.csi ]; then
 		samtools index -c -@4 -o ${PWD}/${id}/${id}_out/bqsr_1.csi ${PWD}/${id}/${id}_out/bqsr_1.bam
 	fi
-done < ${batchfile}
+done 
+
 
 chrlist=($(seq 1 1 22) "X" "Y")
 
