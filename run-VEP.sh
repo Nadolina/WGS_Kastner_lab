@@ -82,7 +82,7 @@ deletions=$(bcftools view \
 echo "
 Number of deletions (*) observed in ${VCF}: ${deletions}"
 
-echo "#SWARM -t 16 -g 64 --time=12:00:00 --logdir ${SLURM_JOB_ID}.tmpdir" > "${prefix}-VEP.swarm"
+echo "#SWARM -t 16 -g 96 --time=12:00:00 --logdir ${SLURM_JOB_ID}.tmpdir" > "${prefix}-VEP.swarm"
 echo "#SWARM -t 4 -g 16 --time=4:00:00 --logdir ${SLURM_JOB_ID}.tmpdir" > "${prefix}-VEP-filter.swarm"
 mkdir -p ${prefix}-VEP-logs 
 mkdir -p ${prefix}-VEP-VCFs 
@@ -93,25 +93,55 @@ do
 
     echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
         tabix -h ${prefix}.norm.vcf.gz ${chrnum} | vep \
-            --fasta  ${ref} \
-            --format vcf \
-            --species human \
-            --assembly GRCh38 \
-            --vcf \
-            -o ${prefix}-VEP-VCFs/${chrnum}.vcf \
-            --force_overwrite \
-            --no_stats \
-            --offline --cache --dir ${VEP_CACHEDIR} \
-            --plugin CADD,${VEP_CACHEDIR}/CADD_1.4_GRCh38_whole_genome_SNVs.tsv.gz,${VEP_CACHEDIR}/CADD_1.4_GRCh38_InDels.tsv.gz \ 
-            --custom file=${VEP_CACHEDIR}/gnomad.genomes.v4.0.sites.noVEP.vcf.gz,short_name=gnomADg,format=vcf,type=exact,coords=0,fields=AC%AN%AF_afr%AF_amr%AF_asj%AF_eas%AF_fin%AF_nfe%AF_oth \
-            --plugin REVEL,${VEP_CACHEDIR}/revel_GRCh38_1.3.tsv.gz \
-            --plugin SpliceAI,snv=${VEP_CACHEDIR}/spliceai_scores.masked.snv.hg38.vcf.gz,indel=${VEP_CACHEDIR}/spliceai_scores.masked.indel.hg38.vcf.gz \
-            --plugin MaxEntScan,${VEP_CACHEDIR}/MaxEntScan \
-            --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-VEP.swarm
+        --fasta /data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta \
+        --format vcf \
+        --species human \
+        --assembly GRCh38 \
+        --vcf \
+        -o ${prefix}-VEP-VCFs/${chrnum}.vcf \
+        --force_overwrite \
+        --offline --cache --dir ${VEP_CACHEDIR} \
+        --hgvs \
+        --sift b \
+        --polyphen b \
+        --check_existing \
+        --plugin HGVSReferenceBase \
+        --plugin CADD,${VEP_CACHEDIR}/CADD_1.4_GRCh38_whole_genome_SNVs.tsv.gz,${VEP_CACHEDIR}/CADD_1.4_GRCh38_InDels.tsv.gz \
+        --custom file=${VEP_CACHEDIR}/gnomad.genomes.v4.0.sites.noVEP.vcf.gz,short_name=gnomADg,format=vcf,type=exact,coords=0,fields=AC%AN%nhomalt_joint%nhomalt%AC_joint%AF_joint%AF_grpmax%AC_XY%non_par \
+        --plugin SpliceAI,snv=${VEP_CACHEDIR}/spliceai_scores.masked.snv.hg38.vcf.gz,indel=${VEP_CACHEDIR}/spliceai_scores.masked.indel.hg38.vcf.gz \
+        --plugin MaxEntScan,${VEP_CACHEDIR}/MaxEntScan \
+        --plugin REVEL,${VEP_CACHEDIR}/revel_GRCh38_1.3.tsv.gz \
+        --plugin AlphaMissense,file=${VEP_CACHEDIR}/AlphaMissense_hg38.tsv.gz,cols=all \
+        --custom file=/fdb/clinvar/vcf_GRCh38/clinvar_20220517.vcf.gz,short_name=ClinVar,format=vcf,type=exact,coords=0,fields=CLNSIG%CLNREVSTAT%CLNDN \
+        --plugin GeneBe \
+        --custom file=/fdb/VEP/loftee/2022-06/GRCh38/gerp_conservation_scores.homo_sapiens.GRCh38.bw,short_name=GERP,format=bigwig \
+        --flag_pick \
+        --pick_order rank \
+        --canonical \
+        --no_stats \
+        --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-VEP.swarm
+
+    # echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
+    #     tabix -h ${prefix}.norm.vcf.gz ${chrnum} | vep \
+    #         --fasta  ${ref} \
+    #         --format vcf \
+    #         --species human \
+    #         --assembly GRCh38 \
+    #         --vcf \
+    #         -o ${prefix}-VEP-VCFs/${chrnum}.vcf \
+    #         --force_overwrite \
+    #         --no_stats \
+    #         --offline --cache --dir ${VEP_CACHEDIR} \
+    #         --plugin CADD,${VEP_CACHEDIR}/CADD_1.4_GRCh38_whole_genome_SNVs.tsv.gz,${VEP_CACHEDIR}/CADD_1.4_GRCh38_InDels.tsv.gz \ 
+    #         --custom file=${VEP_CACHEDIR}/gnomad.genomes.v4.0.sites.noVEP.vcf.gz,short_name=gnomADg,format=vcf,type=exact,coords=0,fields=AC%AN%AF_afr%AF_amr%AF_asj%AF_eas%AF_fin%AF_nfe%AF_oth \
+    #         --plugin REVEL,${VEP_CACHEDIR}/revel_GRCh38_1.3.tsv.gz \
+    #         --plugin SpliceAI,snv=${VEP_CACHEDIR}/spliceai_scores.masked.snv.hg38.vcf.gz,indel=${VEP_CACHEDIR}/spliceai_scores.masked.indel.hg38.vcf.gz \
+    #         --plugin MaxEntScan,${VEP_CACHEDIR}/MaxEntScan \
+    #         --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-VEP.swarm
     
     echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
         filter_vep -i ${prefix}-VEP-VCFs/${chrnum}.vcf \
-        -f 'gnomADg_AF_afr < 0.1 and gnomADg_AF_amr < 0.1 and gnomADg_AF_asj < 0.1 and gnomADg_AF_eas < 0.1 and gnomADg_AF_fin < 0.1 and gnomADg_AF_nfe < 0.1' \
+        -f 'AF_grpmax < 0.1' \
         --only_matched \
         --format vcf \
         --output_file ${prefix}-VEP-VCFs/${chrnum}.filtered.vcf \
@@ -120,7 +150,7 @@ do
 
 done 
 
-vep_jid=$(swarm --module VEP/112,samtools/1.19 -t 16 -g 64 --gres=lscratch:200 --time=1-06:00:00 ${prefix}-VEP.swarm)
+vep_jid=$(swarm --module VEP/112,samtools/1.19 -t 16 -g 96 --gres=lscratch:200 --time=1-06:00:00 ${prefix}-VEP.swarm)
 
 swarm --dependency afterok:${vep_jid} --module VEP/112 -t 4 -g 16 --gres=lscratch:50 --time=04:00:00 ${prefix}-VEP-filter.swarm
 
