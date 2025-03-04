@@ -28,23 +28,37 @@ while getopts "b:h" option; do
    esac
 done
 
-batch=$(cat ${batchfile})
-
 ## Initiating the batch file that will be passed to the globus transfer command 
 rundate=`date +'%m%d%y'`
 > globus-transfer-${rundate}-${batchfile}
 
-for line in ${batch}; do
+batch1=$(grep '/data/Kastner_PFS/WGS/20*' ${batchfile} )
+batch2=$(grep -v '/data/Kastner_PFS/WGS/20*' ${batchfile})
 
-    printf "\nSearching for BQSR bam files corresponding to original bam: ${line}\n"
+batch=$(cat ${batchfile})
 
-    ## Isolating the sample name from the original BAM file 
-    sample=$(echo ${line} | awk -F '/' '{print $NF}' | sed 's/.bam//g' )
+for line in $batch
+do 
 
-    ## Identifying the year the original BAM was modified or created - for sorting in ketu 
-    mod_date=$(date -r ${line} | awk -F ' ' '{print $NF}')
-    printf "The bam file ${line} was created in ${mod_date}.\n"
+    ## if-fi checks for formatting of file name
+    ## some files have been moved in Kastner_PFS and so their "modification date" does not reflect their true date of receipt
+    if echo ${batch1} | grep -q ${line} 
+        then 
+            ## Isolating the sample name from the original BAM file 
+            sample=$(echo ${line} | awk -F '/' '{print $NF}' | sed 's/.bam//g' )
 
+            ## Parsing path to get original date of receipt 
+            mod_date=$(echo ${line} | cut -f 5 -d'/')
+            printf "The bam file ${line} was created in ${mod_date}.\n"
+    elif echo ${batch2} | grep -q ${line}
+        then
+            sample=$(echo ${line} | awk -F '/' '{print $NF}' | sed 's/.bam//g' )
+
+            ## Identifying the year the original BAM was modified or created - for sorting in ketu 
+            mod_date=$(date -r ${line} | awk -F ' ' '{print $NF}')
+            printf "The bam file ${line} was created in ${mod_date}.\n"
+    fi
+        
     ## globus mkdir does not have the -p function like linux to check for the existence of a file or folder 
     ## using the "stat" output to see whether a folder already exists for a given sample, and creating it if not 
     status=$(globus stat c1cb6b0e-4b64-11ef-b90c-c30b78766494:/mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample})
@@ -89,16 +103,11 @@ done
 printf "\nThe file globus-transfer-${rundate}-${batchfile} will contain any BQSR *bam and *bai files available to transfer to ketu."
 printf "Run the command 
 
-        globus transfer --no-verify-checksum \
-        --batch globus-transfer-${rundate}-${batchfile} \
-        {origin endpoint globus ID} \
-        {destination endpoint globus ID}
+        globus transfer --no-verify-checksum --batch globus-transfer-${rundate}-${batchfile} {origin endpoint globus ID} {destination endpoint globus ID}
 
-    The origin endpoint should be e2620047-6d04-11e5-ba46-22000b92c6ec. Use to verify: 
+    The origin endpoint should be e2620047-6d04-11e5-ba46-22000b92c6ec. Use this command to verify, look for 'NIH HPC Data Transfer (Biowulf)': 
 
         globus endpoint search NIH 
-
-    Look for "NIH HPC Data Transfer (Biowulf)".
 
     Your ketu globus endpoint will be different. Use the below to get your ID:
 
