@@ -2,7 +2,12 @@
 
 ## REFERENCES 
 ## 1. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html)
-## 2. 
+## 2. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
+## 3. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
+## 4. https://samtools.github.io/bcftools/bcftools.html#terminology
+## 5. https://gatk.broadinstitute.org/hc/en-us/articles/360035531912-Spanning-or-overlapping-deletions-allele#:~:text=We%20use%20the%20term%20spanning,heterozygous%20or%20homozygous%20variant%20form
+## 6. https://useast.ensembl.org/info/docs/tools/vep/vep_formats.html#input
+
 
 set -e 
 
@@ -40,7 +45,7 @@ chrlist=($(seq 1 1 22) "X" "Y")
 ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 
 
-## identifying the file type and deciding whether to compress and/or index 
+# identifying the file type and deciding whether to compress and/or index 
 if [[ $(file -b --mime-type $VCF) == 'application/x-gzip' ]]
 then
     printf "BGZIP file recognized, performing tabix indexing.\n"
@@ -56,17 +61,12 @@ fi
 
 prefix=$(echo ${VCF} | sed 's/.vcf.gz//g')
 
-## ALT allele deletions in GATK are signified with an asterisk (*), but VEP employs a dash (-)
-## ALT deletions left as an * will not be annotated 
-## Here, I normalize the VCF (as per recommendations in 1,2,3) and substitute asterisks in the ALT column for dashes.
+# ALT allele deletions in GATK are signified with an asterisk (*), but VEP employs a dash (-)
+# ALT deletions left as an * will not be annotated 
+# Here, I normalize the VCF (as per recommendations in 1,2,3) and substitute asterisks in the ALT column for dashes (see 4,5,6 for more info on the * and - notation in bcftools and vep).
 
-bcftools norm \
-    --threads ${SLURM_CPUS_PER_TASK} \
-    -m-any \
-    --check-ref x \
-    -f ${ref} \
-    ${VCF} \
-    --force | \
+bcftools norm --threads ${SLURM_CPUS_PER_TASK} -m-any --check-ref x -f ${ref} ${VCF} --force | \
+    bcftools sort | \
     sed 's/*\t/-\t/g' | \
     bgzip > ${prefix}.norm.vcf.gz
 
@@ -82,13 +82,19 @@ deletions=$(bcftools view \
 echo "
 Number of deletions (*) observed in ${VCF}: ${deletions}"
 
-echo "#SWARM -t 16 -g 96 --time=1-00:00:00 --logdir ${SLURM_JOB_ID}.tmpdir" > "${prefix}-VEP.swarm"
-echo "#SWARM -t 4 -g 16 --time=4:00:00 --logdir ${SLURM_JOB_ID}.tmpdir" > "${prefix}-VEP-filter.swarm"
+if test -f ${prefix}-fork-VEP.swarm 
+then
+    printf "${prefix}-fork-VEP.swarm found - overwritting.\n"
+    rm ${prefix}-fork-VEP.swarm
+fi
+
+echo "#SWARM -t 4 -g 10 --time=1-00:00:00 --logdir ${prefix}-VEP-logs" > "${prefix}-fork-VEP.swarm"
+echo "#SWARM -g 5 --time=4:00:00 --logdir ${prefix}-VEP-logs" > ${prefix}-VEP-filter.swarm
 mkdir -p ${prefix}-VEP-logs 
 mkdir -p ${prefix}-VEP-VCFs 
 
 
-## Generating a swarm file where there is each line is the annotation of one chromosome 
+# Generating a swarm file where there is each line is the annotation of one chromosome 
 for value in "${chrlist[@]}"
 do 
     chrnum="chr${value}"
@@ -117,10 +123,9 @@ do
         --pick_order rank \
         --canonical \
         --no_stats \
-        --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-VEP.swarm
+        --fork 4 --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-fork-VEP.swarm
 
-# --plugin GeneBe \
-    
+        # --plugin GeneBe \
 
     # a second swarm for filtering post annotation
     echo "filter_vep -i ${prefix}-VEP-VCFs/${chrnum}.vcf \
@@ -133,9 +138,9 @@ do
 
 done 
 
-vep_jid=$(swarm --devel --module VEP/112,samtools/1.19 ${prefix}-VEP.swarm)
+vep_jid=$(swarm --module VEP/112,samtools/1.19 ${prefix}-fork-VEP.swarm)
 
-# swarm --dependency afterok:${vep_jid} --module VEP/112 --time=04:00:00 ${prefix}-VEP-filter.swarm
+swarm --dependency afterok:${vep_jid} --module VEP/112 --time=04:00:00 ${prefix}-VEP-filter.swarm
 
 
 
