@@ -46,11 +46,12 @@ echo "#SWARM -g 32 -t 8 --time=4:00:00" > index-${rundate}.swarm
 echo "#SWARM -g 32 -t 8 --time=4:00:00" > concat-${rundate}.swarm
 echo "#SWARM -g 32 -t 8 --time=4:00:00" > split-${rundate}.swarm
 
+## List of fields to exclude from INFO header and variant record 
+## There are fields listed in INFO that are present in the CSQ, so I remove them from INFO before CSQ split, which will add them back
 exclude=$(echo 'INFO/AC,INFO/AN,INFO/AS_FilterStatus,INFO/AS_RAW_BaseQRankSum,INFO/AS_RAW_MQ,INFO/AS_RAW_MQRankSum,INFO/AS_RAW_ReadPosRankSum,INFO/AS_ReadPosRankSum,INFO/AS_SB_TABLE,INFO/AS_SOR,INFO/AS_VQSLOD,INFO/AS_culprit,INFO/BaseQRankSum,
 INFO/DB,INFO/ExcessHet,INFO/FS,INFO/InbreedingCoeff,INFO/MLEAC,INFO/MLEAF,INFO/MQ,INFO/MQRankSum,INFO/NEGATIVE_TRAIN_SITE,INFO/POSITIVE_TRAIN_SITE,INFO/QD,INFO/RAW_MQandDP,INFO/ReadPosRankSum,INFO/SOR,INFO/VQSLOD,INFO/culprit,
 INFO/gnomADg,INFO/gnomADg_AC,INFO/gnomADg_AN,INFO/gnomADg_nhomalt_joint,INFO/gnomADg_nhomalt,INFO/gnomADg_AC_joint,INFO/gnomADg_AF_joint,INFO/gnomADg_AF_grpmax,INFO/gnomADg_AC_XY,INFO/gnomADg_non_par,INFO/ClinVar,INFO/ClinVar_CLNSIG,
 INFO/ClinVar_CLNREVSTAT,INFO/ClinVar_CLNDN,INFO/GERP')
-#fields="Allele,Consequence,IMPACT,SYMBOL,Gene,Feature_type,Feature,BIOTYPE,EXON,INTRON,HGVSc,HGVSp,cDNA_position,CDS_position,Protein_position,Amino_acids,Codons,Existing_variation,DISTANCE,STRAND,FLAGS,SYMBOL_SOURCE,HGNC_ID,SOURCE,CADD_PHRED,CADD_RAW,REVEL,SpliceAI_pred_DP_AG,SpliceAI_pred_DP_AL,SpliceAI_pred_DP_DG,SpliceAI_pred_DP_DL,SpliceAI_pred_DS_AG,SpliceAI_pred_DS_AL,SpliceAI_pred_DS_DG,SpliceAI_pred_DS_DL,SpliceAI_pred_SYMBOL,MaxEntScan_alt,MaxEntScan_diff,MaxEntScan_ref,gnomADg,gnomADg_AF_afr,gnomADg_AF_amr,gnomADg_AF_asj,gnomADg_AF_eas,gnomADg_AF_fin,gnomADg_AF_nfe,gnomADg_AF_oth"
 
 mkdir -p ${PWD}/buildhail_logs
 
@@ -69,7 +70,9 @@ for folder in $batches;
 
     vcflist=()
 
+    ## swarm for preparing batch-chromosome VCFs with compression and indexing 
     for chr in "${chrlist[@]}";
+
         do if test -f "${folder}/chr${chr}.filtered.vcf.gz" ; then 
             printf "
             ${folder}/chr${chr}.filtered.vcf.gz found to be compressed. Creating index now.
@@ -89,6 +92,7 @@ for folder in $batches;
         fi
     done
     
+    ## generating swarm for concatenating VCFs in a batch 
     echo "
     Concatenating chr-VCFs with following command: 
     
@@ -97,6 +101,7 @@ for folder in $batches;
 
     printf "bcftools concat -Oz -o ${folder}/${prefix}.concat.vcf.gz -W ${vcflist}\n" >> concat-${rundate}.swarm
 
+    ## Generating swarm for  splitting CSQ lines and removing unnecessary fields in batch VCFs 
     printf "bcftools +split-vep -c- -d ${folder}/${prefix}.concat.vcf.gz | \
         bcftools annotate -x "${exclude}" -Oz -o ${folder}/${prefix}.csqsplit.vcf.gz -W\n" >> split-${rundate}.swarm
     
@@ -104,8 +109,7 @@ for folder in $batches;
 
 done
 
-
-
+## Preparing script to merge csq-split batch VCFs after swarms are complete 
 printf "#!/bin/sh\n\nmodule load bcftools\n" > merge-${rundate}.sh 
 printf "bcftools merge -m none -Oz -o multibatch.merged.${rundate}.vcf.gz --write-index ${csqsplit_vcfs}\n" >> merge-${rundate}.sh 
 
