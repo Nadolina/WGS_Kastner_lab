@@ -65,12 +65,12 @@ prefix=$(echo ${VCF} | sed 's/.vcf.gz//g')
 # ALT deletions left as an * will not be annotated 
 # Here, I normalize the VCF (as per recommendations in 1,2,3) and substitute asterisks in the ALT column for dashes (see 4,5,6 for more info on the * and - notation in bcftools and vep).
 
-bcftools norm --threads ${SLURM_CPUS_PER_TASK} -m-any --check-ref x -f ${ref} ${VCF} --force | \
-    bcftools sort | \
+bcftools sort ${VCF} | \
+    bcftools norm --threads 4 -m-any --check-ref x -f ${ref} --force | \
     sed 's/*\t/-\t/g' | \
     bgzip > ${prefix}.norm.vcf.gz
 
-bcftools index ${prefix}.norm.vcf.gz
+bcftools index ${prefix}.norm.vcf.gz 
 
 deletions=$(bcftools view \
     --threads ${SLURM_CPUS_PER_TASK} \
@@ -82,19 +82,18 @@ deletions=$(bcftools view \
 echo "
 Number of deletions (*) observed in ${VCF}: ${deletions}"
 
-if test -f ${prefix}-fork-VEP.swarm 
+if test -f ${prefix}-VEP.swarm 
 then
-    printf "${prefix}-fork-VEP.swarm found - overwritting.\n"
-    rm ${prefix}-fork-VEP.swarm
+    printf "${prefix}-VEP.swarm found - overwritting.\n"
+    rm ${prefix}-VEP.swarm
 fi
 
-echo "#SWARM -t 4 -g 10 --time=1-00:00:00 --logdir ${prefix}-VEP-logs" > "${prefix}-fork-VEP.swarm"
+echo "#SWARM -g 10 --time=1-00:00:00 --logdir ${prefix}-VEP-logs" > "${prefix}-VEP.swarm"
 echo "#SWARM -g 5 --time=4:00:00 --logdir ${prefix}-VEP-logs" > ${prefix}-VEP-filter.swarm
 mkdir -p ${prefix}-VEP-logs 
 mkdir -p ${prefix}-VEP-VCFs 
 
-
-# Generating a swarm file where there is each line is the annotation of one chromosome 
+##Generating a swarm file where there is each line is the annotation of one chromosome 
 for value in "${chrlist[@]}"
 do 
     chrnum="chr${value}"
@@ -112,7 +111,7 @@ do
         --check_existing \
         --plugin HGVSReferenceBase \
         --plugin CADD,${VEP_CACHEDIR}/CADD_1.4_GRCh38_whole_genome_SNVs.tsv.gz,${VEP_CACHEDIR}/CADD_1.4_GRCh38_InDels.tsv.gz \
-        --custom file=${VEP_CACHEDIR}/gnomad.genomes.v4.0.sites.noVEP.vcf.gz,short_name=gnomADg,format=vcf,type=exact,coords=0,fields=AC%AN%nhomalt_joint%nhomalt%AC_joint%AF_joint%AF_grpmax%AC_XY%non_par%sift_max%polyphen_max \
+        --custom file=/data/Kastner_PFS/references/HG38/gnomad.genomes.v4.0.sites.noVEP.subset_annots.vcf.gz,short_name=gnomADg,format=vcf,type=exact,coords=0,fields=AC%AN%nhomalt_joint%nhomalt%AC_joint%AF_joint%AF_grpmax%AC_XY%non_par%sift_max%polyphen_max \
         --plugin SpliceAI,snv=${VEP_CACHEDIR}/spliceai_scores.masked.snv.hg38.vcf.gz,indel=${VEP_CACHEDIR}/spliceai_scores.masked.indel.hg38.vcf.gz \
         --plugin MaxEntScan,${VEP_CACHEDIR}/MaxEntScan \
         --plugin REVEL,${VEP_CACHEDIR}/revel_GRCh38_1.3.tsv.gz \
@@ -122,8 +121,7 @@ do
         --flag_pick \
         --pick_order rank \
         --canonical \
-        --no_stats \
-        --fork 4 --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-fork-VEP.swarm
+        --no_stats --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-VEP.swarm
 
         # --plugin GeneBe \
 
@@ -138,7 +136,7 @@ do
 
 done 
 
-vep_jid=$(swarm --module VEP/112,samtools/1.19 ${prefix}-fork-VEP.swarm)
+vep_jid=$(swarm --module VEP/112,samtools/1.19 ${prefix}-VEP.swarm)
 
 swarm --dependency afterok:${vep_jid} --module VEP/112 --time=04:00:00 ${prefix}-VEP-filter.swarm
 

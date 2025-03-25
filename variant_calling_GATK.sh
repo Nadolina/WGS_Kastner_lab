@@ -60,14 +60,14 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
     inbam=$1 
     id=$2 
 
-    echo "#SWARM -t 8 -g 32 --time=12:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
+    echo "#SWARM -t 4 -g 20 --time=24:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
 
     for value in "${chrlist[@]}" ## Looping through a list of chromosome names to generate lines for a swarm script that will run haplotype caller on each chromosome in parallel.
     do 
         chrnum="chr${value}"
 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-                gatk --java-options "-Xmx4g" HaplotypeCaller  \
+                gatk --java-options "-Xms20G -Xmx20G -XX:ParallelGCThreads=4" HaplotypeCaller  \
                 -R ${ref} \
                 -I ${inbam} \
                 -L ${chrnum} \
@@ -148,14 +148,14 @@ set -x
 jids=""
 for id in ${batch}
 do 
-    bam="${PWD}/${id}/${id}_out/bqsr_1.bam"
+    bam="${PWD}/${id}/${id}_out/${id}_bqsr_1.bam"
 
     mkdir -p ${PWD}/${id}/${id}_out/logs_${rundate} ##Creating the necessary subdirectories for each sample 
     mkdir -p ${PWD}/${id}/${id}_out/gvcfs_${rundate} 
 
     generate_HC_swarm ${bam} ${id}
 
-    jid=$(swarm --module GATK --gres=lscratch:200 -g 32 -t 8 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
+    jid=$(swarm --module GATK --gres=lscratch:200 -g 20 -t 4 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
     echo $jid
     jids+=`echo "$jid "`
 done 
@@ -168,7 +168,7 @@ printf "Combining GVCFs dependent on following jobs completing: $jids\n"
 ## One swarm job per chromosome
 
 generate_combineGVCF_swarm
-combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:200 -g 32 -t 8 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
+combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:200 -g 10 -t 4 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
 echo $combine_jid
 printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. Genotyping will began upon completion of $combine_jid\n"
 
@@ -177,7 +177,7 @@ printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. G
 ## One swarm job per chromosome 
 
 generate_genotypeGVCFs_swarm
-genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:200 -g 32 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
+genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:200 -g 10 -t 4 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
 echo $genotypejid
 
 sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${sourcedir}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
