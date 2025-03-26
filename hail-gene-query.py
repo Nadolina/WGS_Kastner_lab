@@ -16,20 +16,18 @@ if args.gene:
 
 ## FUNCTIONS ---------------------
 
-def query(db):
+def gene_search(db):
 
     ## Initializing hail and collecting pre-built matrix tables for querying
     print ("\nInitializing hail and loading matrix tables.\n")
     mt=hl.read_matrix_table(db)
 
-    constraint=hl.read_table('/data/brajukanm/hail_testing/constraint/gnomad.v4.1.constraint_metrics.ht')
-
-    ## Performing query 
     print ("\nStarting query of % s in % s." % (args.gene,db))
+
     query=mt.filter_rows(mt.info['SYMBOL'].contains(gene))
     if query.rows().count() == 0:
-        print ('FRG not found in %s' % db)
-        return None 
+        print ('%s not found in %s' % (gene,db))
+        return None
 
     print ("\nStructure of matrix table:\n")
     query.describe()
@@ -43,11 +41,44 @@ def query(db):
     ## Collecting heterozygous and alt-homozygous samples 
     print ("\nCollecting samples with variants observed in % s" % gene)
     query=query.annotate_rows(het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
-                        hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
-
-    query=query.drop('AD','GT','DP','GQ','MIN_DP','PGT','PID','PL','PS','RGQ','SB')
+                         hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
 
     tb=query.localize_entries()
+
+    return (tb)
+
+
+def query(gatk_tb,bcftools_tb):
+
+    # mt1=hl.read_matrix_table(gatk_db)
+    # mt2=hl.head_matrix_table(bcftools_db)
+
+    # constraint=hl.read_table('/data/brajukanm/hail_testing/constraint/gnomad.v4.1.constraint_metrics.ht')
+
+    ## Performing query 
+    # print ("\nStarting query of % s in % s." % (args.gene,db))
+    # query=mt.filter_rows(mt.info['SYMBOL'].contains(gene))
+    # if query.rows().count() == 0:
+    #     print ('FRG not found in %s' % db)
+    #     return None 
+
+    # print ("\nStructure of matrix table:\n")
+    # query.describe()
+
+    # dim=query.count()
+    # print ("\nNumber of rows matching %s: " % gene, dim[0], "\n")
+
+    # ## Adding some aggregate statistics from hail's built in variant_qc function 
+    # query=hl.variant_qc(query)
+
+    # ## Collecting heterozygous and alt-homozygous samples 
+    # print ("\nCollecting samples with variants observed in % s" % gene)
+    # query=query.annotate_rows(het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
+    #                     hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
+
+    # query=query.drop('AD','GT','DP','GQ','MIN_DP','PGT','PID','PL','PS','RGQ','SB')
+
+    # tb=query.localize_entries()
 
     ## Stoing table in chache for improved speed 
     tb=tb.persist()
@@ -110,6 +141,8 @@ def query(db):
 start=time.time() 
 logname="".join(['/data/Kastner_PFS/WGS/cohort_db/version_031925/query_logs/query-',gene,'-',date.today().strftime('%m%d%y'),'.log'])
 hl.init(log=logname)
+
+constraint=hl.read_table('/data/brajukanm/hail_testing/constraint/gnomad.v4.1.constraint_metrics.ht')
 
 db1_df=query('/data/Kastner_PFS/WGS/cohort_db/version_031925/db1.concat.031725.mt')
 db2_df=query('/data/Kastner_PFS/WGS/cohort_db/version_031925/db2.concat.031725.mt')
