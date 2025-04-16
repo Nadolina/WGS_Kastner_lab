@@ -12,7 +12,7 @@ Help()
 {
 	# Display help 
 	echo "To automate the processes of converting BAMs to uBAMs, marking adapters and aligning to the reference genome (currently GRCh38)."
-	echo "For WGS, I recommend providing at least --mem=96g and --cpus-per-task=16 and --time=1-00:00:00, assuming a bam of around 60GB, scale appropriately."
+	echo "For WGS, I recommend providing at least --mem=48g and --cpus-per-task=16 and --time=1-00:00:00, assuming a bam of around 60GB, scale appropriately."
 	echo ""
 	echo "To run this pipeline use the following command:"
 	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -b [original bam]"
@@ -78,7 +78,7 @@ revert() { ## Converts the original aligned bam to an unaligned bam
 
 	##ATTRIBUTES_TO_CLEAR are annotations in an aligned bam that are not compatible with an unaligned bam/future alignment and must be removed 
 
-	java -Xmx8G -jar $PICARDJAR RevertSam \
+	java -Xmx16G -jar $PICARDJAR RevertSam \
      		I=$alnbam \
      		O=$OUTDIR/$prefix.reverted.bam \
      		SANITIZE=true \
@@ -90,7 +90,8 @@ revert() { ## Converts the original aligned bam to an unaligned bam
      		ATTRIBUTE_TO_CLEAR=OC \
      		ATTRIBUTE_TO_CLEAR=OP \
      		ATTRIBUTE_TO_CLEAR=sd \
-     		ATTRIBUTE_TO_CLEAR=xq \
+     		# ATTRIBUTE_TO_CLEAR=xq \
+			# ATTRIBUTE_TO_CLEAR=XQ \
      		TMP_DIR=/lscratch/${SLURM_JOB_ID} \
      		> $OUTDIR/log-RevertSam-${prefix}-${SLURM_JOB_ID}.txt 2>&1
 
@@ -101,7 +102,7 @@ mkAdapters() { # Using MarkIlluminaAdapters to mark the illumina adapters in our
 	java -Xmx8G -jar $PICARDJAR MarkIlluminaAdapters \
      		I=$OUTDIR/${prefix}.reverted.bam \
      		O=$OUTDIR/${prefix}.mkAdapter.bam\
-     		M=$OUTDIR/qc_out/${prefix}.mkAdapter.metrics.txt \
+     		M=${prefix}/qc_out/${prefix}.mkAdapter.metrics.txt \
      		TMP_DIR=/lscratch/${SLURM_JOB_ID} \
     		 > $OUTDIR/log-mkAdapter-${prefix}-${SLURM_JOB_ID}.txt 2>&1
 }
@@ -110,7 +111,7 @@ alignment() { ## Converting the marked adapters bam into a sam and piping that t
 
 	echo "Converting sam to an interleaved fastq and piping the output to bwa-mem2." 
 
-	java -Xmx8G -jar $PICARDJAR SamToFastq \
+	java -Xmx16G -jar $PICARDJAR SamToFastq \
                 I=$OUTDIR/${prefix}.mkAdapter.bam \
                 FASTQ=/dev/stdout \
                 CLIPPING_ACTION=2 CLIPPING_ATTRIBUTE=XT INTERLEAVE=true NON_PF=true TMP_DIR=/lscratch/${SLURM_JOB_ID} 2> ${OUTDIR}/log-samtofastq-${SLURM_JOB_ID}.txt | \
@@ -128,7 +129,7 @@ revert
 fastqc -o ${prefix}/qc_out ${OUTDIR}/${prefix}.reverted.bam &
 mkAdapters 
 alignment
-samtools stats -@${SLURM_CPUS_PER_TASK} ${OUTDIR}/${prefix}.mergedaln.bam > ${prefix}}/qc_out/${prefix}.mergedaln.stats ## generating stats of the original and new alignments. 
+samtools stats -@${SLURM_CPUS_PER_TASK} ${OUTDIR}/${prefix}.mergedaln.bam > ${prefix}/qc_out/${prefix}.mergedaln.stats ## generating stats of the original and new alignments. 
 samtools stats -@${SLURM_CPUS_PER_TASK} ${alnbam} > ${prefix}/qc_out/${prefix}.originalaln.stats
-rm $OUTDIR/${prefix}.mkAdapter.bam $OUTDIR/${prefix}.reverted.bam ${OUTDIR}/${prefix}.markdups_sort.bam.*
+rm $OUTDIR/${prefix}.mkAdapter.bam $OUTDIR/${prefix}.reverted.bam 
 set +x 

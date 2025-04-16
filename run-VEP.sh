@@ -23,6 +23,7 @@ Help()
 
         -h help
 
+        I recommend running VEP with ~10g of memory, because it doesn't effectively make use of more than that. 
         "
 
 }
@@ -122,8 +123,6 @@ do
         --pick_order rank \
         --canonical \
         --no_stats --verbose 2> ${prefix}-VEP-logs/${chrnum}.log" >> ${prefix}-VEP.swarm
-
-        # --plugin GeneBe \
 
     # a second swarm for filtering post annotation
     echo "filter_vep -i ${prefix}-VEP-VCFs/${chrnum}.vcf \

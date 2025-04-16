@@ -8,13 +8,16 @@ set -e
 Help()
 {
 	# Display help 
-	echo "To automate the processes of calling variants from WGS that has undergone standard GATK pre-processing recommendations, alignment (currently GRCh38), and standard alignment cleanup (mark duplicates, BQSR)."
+	echo "To automate the processes of calling variants from WGS that has undergone standard GATK pre-processing recommendations, alignment (currently to GRCh38), and standard alignment cleanup (mark duplicates, BQSR)."
 	echo ""
 	echo "To run this pipeline use the following command:"
-	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile] "
+	echo "sbatch [OPTIONS] variant_calling_GATK.sh -b [batchfile] "
     echo "-b    This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line."  
     echo "-o    This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line."
     echo "      The goal of this was to just reduce the need to create intermediate files and for continuity with the same batch file." 
+    echo ""
+    echo "      You DO NOT need to loop through the batch file like you would have for pre-process-pipe.sh and alignment_cleanup.sh."
+    echo ""
 
 }
 
@@ -67,14 +70,15 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
         chrnum="chr${value}"
 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-                gatk --java-options "-Xms20G -Xmx20G -XX:ParallelGCThreads=4" HaplotypeCaller  \
+                gatk --java-options \"-Xms20G -Xmx20G -XX:ParallelGCThreads=4\" HaplotypeCaller  \
                 -R ${ref} \
                 -I ${inbam} \
                 -L ${chrnum} \
                 -O ${PWD}/${id}/${id}_out/gvcfs_${rundate}/${chrnum}.g.vcf.gz \
                 -G StandardAnnotation -G AS_StandardAnnotation -G StandardHCAnnotation --pcr-indel-model NONE -ERC GVCF \
                 --native-pair-hmm-threads 4 \
-                --tmp-dir /lscratch/\${SLURM_JOB_ID} 2> ${PWD}/${id}/${id}_out/logs_${rundate}/log-HC-${chrnum}-\${SLURM_JOB_ID}.txt" >> HC-${rundate}-${id}.swarm
+                --tmp-dir /lscratch/\${SLURM_JOB_ID} \
+                2> ${PWD}/${id}/${id}_out/logs_${rundate}/log-HC-${chrnum}-\${SLURM_JOB_ID}.txt" >> HC-${rundate}-${id}.swarm
     done
 
 }
@@ -99,11 +103,9 @@ generate_combineGVCF_swarm() {
         done
         ## using the batchfile of sample IDs to combine chromosome gvcfs across samples 
 
-
-
         ## one swarm line per chromosome 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-                gatk --java-options "-Xmx4g" CombineGVCFs \
+                gatk --java-options \"-Xmx4g\" CombineGVCFs \
                 -R $ref ${gvcflist} \
                 -G StandardAnnotation -G AS_StandardAnnotation \
                 -L ${chrnum} \
@@ -125,7 +127,7 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
         chrgvcf="${PWD}/combinedGVCFs_${rundate}/chr${value}.combined.g.vcf.gz" 
 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-            gatk --java-options '-Xmx4g' GenotypeGVCFs \
+            gatk --java-options \"-Xmx4g\" GenotypeGVCFs \
             --tmp-dir /lscratch/\${SLURM_JOB_ID} \
             -R $ref \
             -V $chrgvcf \
