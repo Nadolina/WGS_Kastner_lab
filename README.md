@@ -223,6 +223,13 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 
 </details>
 
+<details>
+<summary>Module 5: Annotation with VEP </summary>
+
+This VEP annotation script simply accepts a VCF as input, which means it can be run on any VCF that you would like. 
+
+</details>
+
 ## Cumulative outputs
 
 ```
@@ -238,6 +245,7 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
     [sample].reverted_fastqc.zip
     
 ```
+
 ##  Batch size and memory allocation 
 
 ## Laundry list 
