@@ -24,20 +24,25 @@ done
 module load R/4.4.1
 module load bcftools/1.19
 module load picard/3.2.0
-# module load vcflib
+module load vcflib
 # module load vcftools
 
 rundate=`date +'%m%d%y'`
+cd ${vcfdir}
+printf "Working in ${vcfdir}.\n" 
+
+scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
+sourcedir="$(dirname $scriptpth)"
 
 ## merging the VCF and getting the number of variants identified across all chromosomes and samples 
-vcflist=`ls ${vcfdir} | grep '.vcf.gz$' | grep '^call'| sort -V`
+vcflist=`ls | grep '.vcf.gz$' | grep '^call'| sort -V`
 
 mergevcf=merged-bcftools-$rundate.vcf.gz
 
 gatherinput=""
 for vcf in ${vcflist};
 do
-    gatherinput+="I=${vcfdir}/${vcf} " 
+    gatherinput+="I=${vcf} " 
 done 
 
 echo "java -jar $PICARDJAR GatherVcfs ${gatherinput} 0=$mergevcf" 2> gathervcfs-bcftools-${rundate}.log
@@ -48,7 +53,7 @@ bcftools index -t $mergevcf
 samples=`bcftools query -l $mergevcf`
 samplestr=`echo $samples | sed -E 's/\n/,/g'`
 
-printf "The number of variants in %s is: " "$samplestr" >> gathervcfs-bcftools-$rundate.log ; bcftools view -H $mergevcf | wc -l >> gathervcfs-bcftools-$rundate.log 
+#printf "The number of variants in %s is: " "$samplestr" >> gathervcfs-bcftools-$rundate.log ; bcftools view -H $mergevcf | wc -l >> gathervcfs-bcftools-$rundate.log 
 
 # Random sampling the VCF to create a subset we can identify filtering thresholds from 
 
@@ -67,7 +72,8 @@ out="stats/snp-out"
 bcftools query -f '%CHROM\t%POS\t%QUAL\t%DP\t%MQBZ' subset-bcftools-snps-$rundate.vcf.gz -o snp-metrics-$rundate.tsv 
 bcftools query -f '%CHROM\t%POS\t%QUAL\t%DP\t%IMF' subset-bcftools-indels-$rundate.vcf.gz -o indels-metrics-$rundate.tsv 
 
-Rscript -e "rmarkdown::render('/data/brajukanm/scripts/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"
+echo 'Rscript -e "rmarkdown::render('$sourcedir/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"'
+Rscript -e "rmarkdown::render('$sourcedir/bcftools_filter_thresholds_2.rmd',params=list(myargs = '${PWD}'),output_dir='${PWD}')"
 
 qual=`cut -f2 -d ',' parameters_snps.csv| awk 'NR==2'`
 mindepth=`cut -f2 -d ',' parameters_snps.csv| awk 'NR==3'`
@@ -77,7 +83,7 @@ maxMQBZ=`cut -f2 -d ',' parameters_snps.csv | awk 'NR==6'`
 
 filters=`echo "QUAL < $qual || INFO/DP < $mindepth || INFO/DP > ${maxdepth} || MQBZ < ${minMQBZ}"`
 
-echo "bcftools view -e "${filters}" --min-af 0.05 --types snps -O z -o filter-nomaf-snps-$rundate.vcf.gz $mergevcf "
+echo "bcftools view -e "${filters}" --min-af 0.05 --types snps -O z -o filter-maf-snps-$rundate.vcf.gz $mergevcf "
 bcftools view -e "${filters}" --min-af 0.05 --types snps -O z -o filter-maf-snps-$rundate.vcf.gz $mergevcf 
 echo "bcftools view -e "${filters}" --types snps -O z -o filter-nomaf-snps-$rundate.vcf.gz $mergevcf" 
 bcftools view -e "${filters}" --types snps -O z -o filter-nomaf-snps-$rundate.vcf.gz $mergevcf
@@ -88,4 +94,6 @@ imaxdepth=`cut -f2 -d ',' parameters_indels.csv| awk 'NR==4'`
 imf=`cut -f2 -d ',' parameters_indels.csv| awk 'NR==5'`
 
 ifilters=`echo "QUAL < $iqual || INFO/DP < $imindepth || INFO/DP > ${imaxdepth} || IMF < 0.1"`
+
+echo "bcftools view -e "${ifilters}" --types indels -O z -o filter-indels-$rundate.vcf.gz $mergevcf"
 bcftools view -e "${ifilters}" --types indels -O z -o filter-indels-$rundate.vcf.gz $mergevcf 

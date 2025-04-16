@@ -6,13 +6,13 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-# knitr::opts_knit$set(root.dir = params$myargs,warning=FALSE, message=FALSE, fig.pos = "H", out.extra = "")
-knitr::opts_knit$set(root.dir="/data/brajukanm/wgs_work/bcftools_out/",warning=FALSE, message=FALSE, fig.pos = "H", out.extra = "") # CHANGE BACK 
+knitr::opts_knit$set(root.dir = params$myargs, fig.pos = "H", out.extra = "")
+# knitr::opts_knit$set(root.dir="/data/brajukanm/wgs_work/bcftools_out/",warning=FALSE, message=FALSE, fig.pos = "H", out.extra = "") # CHANGE BACK 
 ```
 
 ```{r packages, include=FALSE}
 
-renv::load("/data/brajukanm/envs")
+renv::load("/data/Kastner_PFS/scripts/pipelines/WGS-renv")
 
 library(ggplot2)
 library(vcfR)
@@ -54,8 +54,7 @@ it is perhaps better to just identify quantiles that remove the most obvious out
 
 ```{r input files, include=FALSE}
 
-#rundate <- format(Sys.time(), "%m%e%y") ##CHANGE BACK 
-rundate <- "082324"
+rundate <- format(Sys.time(), "%m%d%y") ##CHANGE BACK 
 snpmetrics<-paste0("snp-metrics-",rundate,".tsv")
 snpvcf<-paste0("subset-bcftools-snps-",rundate,".vcf.gz") 
 
@@ -65,7 +64,6 @@ snpvcf<-paste0("subset-bcftools-snps-",rundate,".vcf.gz")
 
 ## Need a VCF with just SNPs for this. 
 readvcf <- read.vcfR(snpvcf,checkFile=TRUE,check_keys=TRUE) 
-
 
 readvcf |> 
   maf(element = 2) |>

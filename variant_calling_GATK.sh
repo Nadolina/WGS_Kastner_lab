@@ -1,21 +1,30 @@
 #!/bin/sh
 
+##References
+# 1. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
+
 set -e 
 
 Help()
 {
 	# Display help 
-	echo "To automate the processes of calling variants from WGS that has undergone standard GATK pre-processing recommendations, alignment (currently GRCh38), and standard alignment cleanup (mark duplicates, BQSR)."
+	echo "To automate the processes of calling variants from WGS that has undergone standard GATK pre-processing recommendations, alignment (currently to GRCh38), and standard alignment cleanup (mark duplicates, BQSR)."
 	echo ""
 	echo "To run this pipeline use the following command:"
-	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile] "
-    echo "-b    This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line."   
+	echo "sbatch [OPTIONS] variant_calling_GATK.sh -b [batchfile] "
+    echo "-b    This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line."  
+    echo "-o    This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line."
+    echo "      The goal of this was to just reduce the need to create intermediate files and for continuity with the same batch file." 
+    echo ""
+    echo "      You DO NOT need to loop through the batch file like you would have for pre-process-pipe.sh and alignment_cleanup.sh."
+    echo ""
 
 }
 
-while getopts "b:h" option; do
+while getopts "b:o:h" option; do
    case $option in
 	b) batchfile=$OPTARG ;;
+    o) origbams=$OPTARG ;;
 	h) # display Help
          Help
          exit;;
@@ -31,7 +40,20 @@ chrlist=($(seq 1 1 22) "X" "Y")
 ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 dbsnp=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.dbsnp138.vcf.gz
 
-scriptpth=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
+sourcedir="$(dirname $scriptpth)"
+
+if [ -z $batchfile ]
+then
+	batch=""
+	while read path
+	do
+		prefix=`basename $path | cut -f1 -d'.'`
+		batch+="${prefix} "
+	done < ${origbams}
+else
+	batch=`cat ${batchfile}`
+fi 
 
 ## FUNCTIONS -----
 
@@ -41,21 +63,22 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
     inbam=$1 
     id=$2 
 
-    echo "#SWARM -t 4 -g 20 --time=4:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
+    echo "#SWARM -t 4 -g 20 --time=24:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
 
     for value in "${chrlist[@]}" ## Looping through a list of chromosome names to generate lines for a swarm script that will run haplotype caller on each chromosome in parallel.
     do 
         chrnum="chr${value}"
 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-                gatk --java-options "-Xmx4g" HaplotypeCaller  \
+                gatk --java-options \"-Xms20G -Xmx20G -XX:ParallelGCThreads=4\" HaplotypeCaller  \
                 -R ${ref} \
                 -I ${inbam} \
                 -L ${chrnum} \
                 -O ${PWD}/${id}/${id}_out/gvcfs_${rundate}/${chrnum}.g.vcf.gz \
                 -G StandardAnnotation -G AS_StandardAnnotation -G StandardHCAnnotation --pcr-indel-model NONE -ERC GVCF \
                 --native-pair-hmm-threads 4 \
-                --tmp-dir /lscratch/\${SLURM_JOB_ID} 2> ${PWD}/${id}/${id}_out/logs_${rundate}/log-HC-${chrnum}-\${SLURM_JOB_ID}.txt" >> HC-${rundate}-${id}.swarm
+                --tmp-dir /lscratch/\${SLURM_JOB_ID} \
+                2> ${PWD}/${id}/${id}_out/logs_${rundate}/log-HC-${chrnum}-\${SLURM_JOB_ID}.txt" >> HC-${rundate}-${id}.swarm
     done
 
 }
@@ -63,7 +86,7 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
 ## This function creates a swarm to combine the GVCFs for each chromosome across the samples in our batch 
 generate_combineGVCF_swarm() {
 
-    echo "#SWARM -t 4 -g 20 --time=4:00:00" > ${PWD}/combinedGVCFs-${rundate}.swarm
+    echo "#SWARM -t 8 -g 32 --time=12:00:00" > ${PWD}/combinedGVCFs-${rundate}.swarm
 
     mkdir -p ${PWD}/combinedGVCFs_${rundate}
     mkdir -p ${PWD}/conbinedGVCFs_logs
@@ -73,15 +96,16 @@ generate_combineGVCF_swarm() {
         chrnum="chr${value}"
         
         gvcflist="" ## Creating a list of the paths to GVCFs to be combined 
-        while IFS="" read -r id || [ -n "$id" ]
+        for id in ${batch}
         do 
             chrgvcf="${PWD}/${id}/${id}_out/gvcfs_${rundate}/${chrnum}.g.vcf.gz"
             gvcflist+="-V ${chrgvcf} " 
-        done < $batchfile ## using the batchfile of sample IDs to combine chromosome gvcfs across samples 
+        done
+        ## using the batchfile of sample IDs to combine chromosome gvcfs across samples 
 
         ## one swarm line per chromosome 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-                gatk --java-options "-Xmx4g" CombineGVCFs \
+                gatk --java-options \"-Xmx4g\" CombineGVCFs \
                 -R $ref ${gvcflist} \
                 -G StandardAnnotation -G AS_StandardAnnotation \
                 -L ${chrnum} \
@@ -92,7 +116,7 @@ generate_combineGVCF_swarm() {
 
 generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the batch chromosomes in parallel
 
-    echo "#SWARM -t 4 -g 20 --time=4:00:00" > ${PWD}/genotypeGVCFs-${rundate}.swarm
+    echo "#SWARM -t 8 -g 32 --time=12:00:00" > ${PWD}/genotypeGVCFs-${rundate}.swarm
 
     mkdir -p ${PWD}/genotypedVCFs_${rundate}
     mkdir -p ${PWD}/genotypeGVCFs_logs
@@ -103,7 +127,7 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
         chrgvcf="${PWD}/combinedGVCFs_${rundate}/chr${value}.combined.g.vcf.gz" 
 
         echo "TWD=/lscratch/\${SLURM_JOB_ID}; \
-            gatk --java-options '-Xmx4g' GenotypeGVCFs \
+            gatk --java-options \"-Xmx4g\" GenotypeGVCFs \
             --tmp-dir /lscratch/\${SLURM_JOB_ID} \
             -R $ref \
             -V $chrgvcf \
@@ -117,27 +141,26 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
 
 }
 
-## HAPLOTYPE CALLER ------
-## Running haplotype caller on each chromosome of each sample
-## A separate swarm script is generated for each sample by this loop
+# HAPLOTYPE CALLER ------
+# Running haplotype caller on each chromosome of each sample
+# A separate swarm script is generated for each sample by this loop
 
 set -x 
 
 jids=""
-while IFS="" read -r id || [ -n "$id" ] 
+for id in ${batch}
 do 
-    bam="${PWD}/${id}/${id}_out/bqsr_1.bam"
+    bam="${PWD}/${id}/${id}_out/${id}_bqsr_1.bam"
 
     mkdir -p ${PWD}/${id}/${id}_out/logs_${rundate} ##Creating the necessary subdirectories for each sample 
     mkdir -p ${PWD}/${id}/${id}_out/gvcfs_${rundate} 
 
     generate_HC_swarm ${bam} ${id}
 
-    jid=$(swarm --module GATK --gres=lscratch:100 -g 20 -t 4 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
+    jid=$(swarm --module GATK --gres=lscratch:200 -g 20 -t 4 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
     echo $jid
     jids+=`echo "$jid "`
-
-done < $batchfile
+done 
 
 jidlist=`echo $jids | sed 's/ /:/g'` ## Creating a list of jobids to use as dependencies for the next job, so that combineGVCFs does not start running until all HC jobs are complete 
 printf "Combining GVCFs dependent on following jobs completing: $jids\n" 
@@ -147,7 +170,7 @@ printf "Combining GVCFs dependent on following jobs completing: $jids\n"
 ## One swarm job per chromosome
 
 generate_combineGVCF_swarm
-combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:100 -g 20 -t 4 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
+combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:200 -g 10 -t 4 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
 echo $combine_jid
 printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. Genotyping will began upon completion of $combine_jid\n"
 
@@ -156,10 +179,10 @@ printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. G
 ## One swarm job per chromosome 
 
 generate_genotypeGVCFs_swarm
-genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:100 -g 24 -t 8 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
+genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:200 -g 10 -t 4 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
 echo $genotypejid
 
-sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${scriptpth}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
+sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${sourcedir}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}
 
 set +x 
 
