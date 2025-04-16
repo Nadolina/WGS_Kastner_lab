@@ -226,7 +226,26 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 <details>
 <summary>Module 5: Annotation with VEP </summary>
 
-This VEP annotation script simply accepts a VCF as input, which means it can be run on any VCF that you would like. 
+### Module 5: Annotation with VEP
+
+This VEP annotation (11) script simply accepts a VCF as input, which means it can be run on any VCF that you would like. The script will:
+1. check for compression and indexing and perform both if needed
+2. sort and normalize the VCF according to recommendations from ensembl and other users (13,14)
+3. generates a swarm for to annotate chromosomes in parallel
+4. performs VEP filtering on each chromosome
+
+Annotations employed include:
+* HGVS
+* CADD
+* gnomADg and gnomAD joint
+* SpliceAI
+* MaxEntScan
+* REVEL
+* AlphaMissense
+* ClinVar
+* GERP
+
+I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on this --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls on a canonical transcript (11). 
 
 </details>
 
@@ -266,5 +285,10 @@ This VEP annotation script simply accepts a VCF as input, which means it can be 
 8. https://www.htslib.org/workflow/filter.html
 9. https://speciationgenomics.github.io/filtering_vcfs/
 10. https://rstudio.github.io/renv/articles/renv.html
+11. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
+12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
+13. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
+14. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
+15. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
 
 
