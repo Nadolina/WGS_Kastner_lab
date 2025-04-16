@@ -54,7 +54,7 @@ bcftools stats merged-${rundate}.vcf.gz > merged-${rundate}.vcf.stats
 mkdir -p filtered_VCFs_${rundate}
 
 ## Running a round of VQSR on the SNPs and indels separately, as recommended by Biowulf and GATK documentation. 
-gatk --java-options "-XX:ParallelGCThreads=2 -Xmx8G" VariantRecalibrator \
+gatk --java-options "-XX:ParallelGCThreads=4 -Xmx16G" VariantRecalibrator \
   -tranche 100.0 -tranche 99.95 -tranche 99.9 \
   -tranche 99.5 -tranche 99.0 -tranche 97.0 -tranche 96.0 \
   -tranche 95.0 -tranche 94.0 \
@@ -75,7 +75,7 @@ gatk --java-options "-XX:ParallelGCThreads=2 -Xmx8G" VariantRecalibrator \
   --rscript-file filtered_VCFs_${rundate}/output_SNP1.plots.R \
   --tmp-dir /lscratch/${SLURM_JOB_ID} 2> ${PWD}/VQSR_logs_${rundate}/slurm-vqsrsnps-${SLURM_JOB_ID}.log 
 
-gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" VariantRecalibrator \
+gatk --java-options "-Xmx16G -XX:ParallelGCThreads=4" VariantRecalibrator \
   -tranche 100.0 -tranche 99.95 -tranche 99.9 \
   -tranche 99.5 -tranche 99.0 -tranche 97.0 -tranche 96.0 \
   -tranche 95.0 -tranche 94.0 -tranche 93.5 -tranche 93.0 \
@@ -92,7 +92,7 @@ gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" VariantRecalibrator \
   --tmp-dir /lscratch/${SLURM_JOB_ID} 2> ${PWD}/VQSR_logs_${rundate}/slurm-vqsr-indels-${SLURM_JOB_ID}.log 
 
 ## Running apply VQSR with the SNP recal file, then passing the vcf generated from this command to the applyVQSR for indels, so we have a combined snp-indels output vcf. 
-gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" ApplyVQSR \
+gatk --java-options "-Xmx16G -XX:ParallelGCThreads=4" ApplyVQSR \
   -V merged-$rundate.vcf.gz \
   --recal-file filtered_VCFs_${rundate}/merged_SNP1.recal \
   -mode SNP \
@@ -102,7 +102,7 @@ gatk --java-options "-Xmx8G -XX:ParallelGCThreads=2" ApplyVQSR \
   --create-output-variant-index true \
   -O filtered_VCFs_${rundate}/SNP.recalibrated_99.9.${rundate}.vcf.gz 2> ${PWD}/VQSR_logs_${rundate}/slurm-applyvqsr-snps-${SLURM_JOB_ID}.log
 
-gatk --java-options "-Xmx8g -XX:ParallelGCThreads=2" ApplyVQSR \
+gatk --java-options "-Xmx16g -XX:ParallelGCThreads=4" ApplyVQSR \
   -V filtered_VCFs_${rundate}/SNP.recalibrated_99.9.${rundate}.vcf.gz \
   -mode INDEL \
   --recal-file filtered_VCFs_${rundate}/merged_indel1.recal \
