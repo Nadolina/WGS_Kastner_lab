@@ -247,6 +247,19 @@ Annotations employed include:
 
 I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on this --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls on a canonical transcript (11). 
 
+After annotation, I apply a very simple filter of 'gnomADg_AF_grpmax < 0.1 or not gnomADg_AF_grpmax'. This just means I only retain variants that have a maximum population allele frequency (grpmax) of 0.1, or if they do have a grpmax AF at all, because absense from gnomAD may indicate the variant is rare. I also apply --only_matched, which will only retain consequence blocks that pass the prescribed filters, if a variant has more than one block. This is more useful if a variant has multiple recorded consequences, i.e./ "intron_variant&non_coding_transcript_variant" and "upstream_gene_variant", and one of your filters is to retain only intron variants. Then, the --only_matched would remove the upstream_gene_variant block. Allelic frequenices for a given variant do not change between blocks, so this does not really apply but I have included it nonetheless. 
+
+After annotation and filtering you will have a *vcf and *filtered.vcf for each chromosome for a batch of samples. 
+
+This VEP script just takes a VCF as input, so it can be applied to one or more samples from any variant caller. I pass batch VCFs from both GATK and bcftools to run-VEP.sh. VEP does not have sophisticated threading, parallelization or lscratch space, so I recommend only allocating 10-15g of memory across the biowulf default of 2 threads. 
+
+```
+sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
+
+  -v VCF
+  -h help
+```
+
 </details>
 
 ## Cumulative outputs
