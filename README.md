@@ -271,7 +271,8 @@ sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
 
 Hail is a database software designed specifically for managing genomic data, because standard dataframe options like SQL are not as sophisticated for this work (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a multi-sample VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
 
-The VCFs produced by VEP in the Module 5 are not quite ready for import into a Hail database. 
+Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. 
+
 
 </details>
 
