@@ -89,6 +89,8 @@ Where the batch text file contains one sample ID per line, which corresponds to 
 
 ## The pipeline 
 
+Click on the drop down arrows to view a module. 
+
 <details>
 <summary>Module 1: Re-alignment to GRCh38</summary>
 
@@ -223,6 +225,58 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 
 </details>
 
+<details>
+<summary>Module 5: Annotation with VEP </summary>
+
+### Module 5: Annotation with VEP
+
+This VEP annotation (11) script simply accepts a VCF as input, which means it can be run on any VCF that you would like. The script will:
+1. check for compression and indexing and perform both if needed
+2. sort and normalize the VCF according to recommendations from ensembl and other users (13,14)
+3. generates a swarm for to annotate chromosomes in parallel
+4. performs VEP filtering on each chromosome
+
+Annotations employed include:
+* HGVS
+* CADD
+* gnomADg and gnomAD joint
+* SpliceAI
+* MaxEntScan
+* REVEL
+* AlphaMissense
+* ClinVar
+* GERP
+
+I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on this --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls on a canonical transcript (11). 
+
+After annotation, I apply a very simple filter of 'gnomADg_AF_grpmax < 0.1 or not gnomADg_AF_grpmax'. This just means I only retain variants that have a maximum population allele frequency (grpmax) of 0.1, or if they do have a grpmax AF at all, because absense from gnomAD may indicate the variant is rare. I also apply --only_matched, which will only retain consequence blocks that pass the prescribed filters, if a variant has more than one block. This is more useful if a variant has multiple recorded consequences, i.e./ "intron_variant&non_coding_transcript_variant" and "upstream_gene_variant", and one of your filters is to retain only intron variants. Then, the --only_matched would remove the upstream_gene_variant block. Allelic frequenices for a given variant do not change between blocks, so this does not really apply but I have included it nonetheless. 
+
+After annotation and filtering you will have a *vcf and *filtered.vcf for each chromosome for a batch of samples. 
+
+This VEP script just takes a VCF as input, so it can be applied to one or more samples from any variant caller. I pass batch VCFs from both GATK and bcftools to run-VEP.sh. VEP does not have sophisticated threading, parallelization or lscratch space, so I recommend only allocating 10-15g of memory across the biowulf default of 2 threads. 
+
+```
+sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
+
+  -v VCF
+  -h help
+```
+
+</details>
+
+<details>
+<summary>Module 6: Building the Hail database </summary>
+
+### Module 6: Building the Hail database 
+
+Hail is a database software designed specifically for managing genomic data, because standard dataframe options like SQL are not as sophisticated for this work (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a multi-sample VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
+
+Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the query, and also perform some reformating for easier filtering when the output TSV is view in excel. 
+
+The VCFs need to be further prepared to accomodate this sub-database configuration. 
+
+</details>
+
 ## Cumulative outputs
 
 ```
@@ -238,7 +292,6 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
     [sample].reverted_fastqc.zip
     
 ```
-##  Batch size and memory allocation 
 
 ## Laundry list 
 
@@ -258,5 +311,11 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch file
 8. https://www.htslib.org/workflow/filter.html
 9. https://speciationgenomics.github.io/filtering_vcfs/
 10. https://rstudio.github.io/renv/articles/renv.html
+11. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
+12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
+13. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
+14. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
+15. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
+16. https://blog.hail.is/introtohail/
 
 
