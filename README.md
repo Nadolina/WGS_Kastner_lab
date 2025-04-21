@@ -273,7 +273,64 @@ Hail is a database software designed specifically for managing genomic data, bec
 
 Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the query, and also perform some reformating for easier filtering when the output TSV is view in excel. 
 
-The VCFs need to be further prepared to accomodate this sub-database configuration. 
+The VCFs need to be further modified to accomodate this sub-database configuration. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools. These are a little redundant, and will be consolidated at some point, per my laundry list. I only wrote them separately because the naming scheme for bcftools files and bcftools annotations are different from GATK. The scripts:
+1. accept a list of folders containing batch annotated VCF files
+2. merge chromosomes across batches annotated VCFs (i.e./ 1 with 1, 2 with 2, etc.)
+3. convert consequence blocks into a Hail compatible format (bcftools csq-split pluggin)
+4. remove unnecessary annotations (mostly from variant calling)
+5. concatenate formatted chromosome VCFs into the four prescribed sub-database VCFs
+
+The script will submit three series of swarm commands, one to perform any necessary compression and indexing, then to perform the CSQ-splitting and the last for the concatenation. The result will be a folder, named buildhail_[rundate] for build_hail_2.sh (for annotated GATK calls) or buildhail_bcftools_[rundate]. Both will contain:
+
+    chr1.split.vcf.gz
+    chr1.split.vcf.gz.csi
+    chr2.split.vcf.gz
+    chr2.split.vcf.gz.csi
+    ...
+    chrN.split.vcf.gz
+    chrN.split.vcf.gz.csi 
+    db1.concat.[rundate].vcf.gz
+    db2.concat.[rundate].vcf.gz
+    db3.concat.[rundate].vcf.gz
+    db4.concat.[rundate].vcf.gz 
+
+__NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the sub-databases are constructed. For each of these db[1-4].concat.[rundate].vcf.gz files, you need to perform the following steps. 
+1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_031925 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
+2. Copy the VCFs to your new directory.
+3. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
+
+```
+bcftools merge -m none -Oz -o [merged VCF] db1.concat.031725.vcf.gz db1.concat.[rundate].vcf.gz
+bcftools merge -m none -Oz -o [newname] db2.concat.031725.vcf.gz db2.concat.[rundate].vcf.gz
+etc.
+```
+  
+4. Start an sinteractive session and allocation at least 40g of memory and 16 cores.
+5. Load the hail module and start an interactive python session.
+
+```
+module load hail
+ipython
+```
+6. Import and initiate hail with memory.
+
+```
+import hail as hl
+hl.init(spark_conf={'spark.driver.memory': '25g'})
+```
+7. For each of the four VCFs, perform the following command to import the VCF and save it into a matrix table. 
+
+```
+hl.import_vcf('[merged VCF]',force_bgz=True,reference_genome='GRCh38',array_elements_required=False).write('db1.concat.[rundate].mt',overwrite=True)
+```
+8. repeat for bcftools VCFs in a different folder in cohort_db, called something like 'bcftools_rundate'.
+9. I unfortunately have the python hail query scripts (hail-gene-query.py and hail-sample-query.py) hard-coded with these database names, so edit them with the new matrix table file paths here:
+
+   ![image](https://github.com/user-attachments/assets/2d0ff666-00df-4b08-9762-3fda759888ff)
+
+Use 'quit()' to exit the interactive python session. 
+
+At this point you should have four matrix tables ready for use independently or with the query scripts provided! 
 
 </details>
 
@@ -297,7 +354,7 @@ The VCFs need to be further prepared to accomodate this sub-database configurati
 
 1. Implement a batching solution for modules one and two. The -l in modules 1 and 2 serves as a bit of a work-around to batching. The problem with the current set up is you need to copy the bam and pre-make working directories for each sample. I think I will wrap this such that it a) allows the user to point to a bam not in the working directory and b) has a second mandatory flag for the sample ID, so that creation of the sample ID-named working directory is standardized. 
 2. Parallelize modules 1 and 2. I think we could break alignment by chromosome or read group and carry that break through base recalibration.
-3. I created a renv for the rmarkdown script at the end, which is just in my own directories and is still linked for now, but it should be moved to the Kastner scripts directory. 
+3. Consolidate build_hail_2.sh and build_hail_bcftools.sh. 
 
 ## References 
 
