@@ -271,8 +271,9 @@ sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
 
 Hail is a database software designed specifically for managing genomic data, because standard dataframe options like SQL are not as sophisticated for this work (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a multi-sample VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
 
-Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the 
+Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the query, and also perform some reformating for easier filtering when the output TSV is view in excel. 
 
+The VCFs need to be further prepared to accomodate this sub-database configuration. 
 
 </details>
 
