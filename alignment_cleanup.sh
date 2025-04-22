@@ -26,7 +26,7 @@ Help()
 	echo "	-r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)"
 	echo "	-h help"
 	echo ""
-	echo "For WGS, I recommend providing at least --mem=64g and --cpus-per-task=16 and --time=1-06:00:00, assuming a bam of around 60GB."
+	echo "For WGS, I recommend providing at least --mem=96g and --cpus-per-task=24, gres=lscratch:400 and --time=1-06:00:00, assuming a bam of around 60GB."
 
 }
 
@@ -82,13 +82,12 @@ set -x
 
 if ${restart}  ##Mark duplicates takes a long time, this modularizes it a bit in the event something happens with the model but the mark duplicates bam was created just fine. 
 then
-	gatk MarkDuplicatesSpark --java-options "-Xms60G -Xmx60G"\
+	gatk MarkDuplicatesSpark --java-options "-Xms60G -Xmx60G" \
 	-I ${mbam} \
 	-O $markdupssam \
 	-M markdup_metrics.txt \
 	--create-output-bam-index true \
 	--remove-all-duplicates true \
-	--tmp-dir /lscratch/${SLURM_JOB_ID} \
 	--spark-master local[12] 2> err.${SLURM_JOB_ID}.txt
 else
 	continue 
@@ -119,7 +118,7 @@ gatk BaseRecalibrator --java-options "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
 	--tmp-dir /lscratch/${SLURM_JOB_ID} > log-bqsr-2-${SLURM_JOB_ID}.txt 2>&1 
 
 # Generating some QC plots so we can see how BQSR improves the quality scoring. 
-gatk AnalyzeCovariates "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
+gatk AnalyzeCovariates --java-options "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
 	-before ${sample}_bqsr_1.table \
 	-after ${sample}_bqsr_2.table \
 	-plots AnalyzeCovariates.pdf 2>&1 
