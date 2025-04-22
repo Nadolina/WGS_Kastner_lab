@@ -294,6 +294,21 @@ The script will submit three series of swarm commands, one to perform any necess
     db3.concat.[rundate].vcf.gz
     db4.concat.[rundate].vcf.gz 
 
+```
+sbatch [OPTIONS] build_hail_2.sh [batch annotation folder 1] [batch annotation folder 2] ... [batch annotation folder n]
+
+Example using prescribed pipeline folders:
+  * running from my wgs working directory
+
+sbatch --mem=10g -c 6 --gres=lscratch:200 --time=04:00:00 /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_lab/build_hail_2.sh \
+  filtered_VCFs_011425_2/indel.SNP.recalibrated_99.9.011425-VEP-VCFs \
+  filtered_VCFs_011425/indel.SNP.recalibrated_99.9.011425-VEP-VCFs \
+  filtered_VCFs_012525/indel.SNP.recalibrated_99.9.012525-VEP-VCFs \
+  filtered_VCFs_110824/indel.SNP.recalibrated_99.9.110824-VEP-VCFs
+
+You can pass as many folders of annotated VCFs as you'd like. 
+```
+
 __NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the sub-databases are constructed. For each of these db[1-4].concat.[rundate].vcf.gz files, you need to perform the following steps. 
 1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_031925 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
 2. Copy the VCFs to your new directory.
@@ -331,6 +346,26 @@ hl.import_vcf('[merged VCF]',force_bgz=True,reference_genome='GRCh38',array_elem
 Use 'quit()' to exit the interactive python session. 
 
 At this point you should have four matrix tables ready for use independently or with the query scripts provided! 
+
+</details>
+
+<details>
+<summary>Module 7: Querying the hail database</summary>
+
+### Module 7: Querying the Hail database 
+
+Hail has extensive functionality for querying matrix tables containing genomic data. I have constructed two scripts for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). I also recommend consulting their forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
+
+I have coded two scripts that employ the python API. The first is hail-gene-query.py. Hail-gene-query.py will collect any variants in the gene of interest, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. You will still need to load the hail module prior to running the script. 
+
+The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. 
+
+```
+module load hail
+
+python3-hail hail-gene-query.py -g [GENE SYMBOL, i.e/MEFV]
+
+```
 
 </details>
 
@@ -374,5 +409,7 @@ At this point you should have four matrix tables ready for use independently or 
 14. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
 15. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
 16. https://blog.hail.is/introtohail/
+17. https://hail.is/docs/0.2/api.html
+18. https://discuss.hail.is/
 
 
