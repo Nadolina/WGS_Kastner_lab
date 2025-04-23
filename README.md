@@ -5,13 +5,20 @@ This README details the four modules of the WGS pipeline developed for rare vari
 2. Cleanup the alignment to prepare it for variant calling.
 3. Variant calling and filtering with GATK.
 4. Variant calling and filtering with bcftools.
+5. Separate annotation of GATK and bcftools calls with VEP.
+6. Construction of hail databases for each GATK and bcftools.
+7. Querying the database for samples, genes or other cohort characteristics. 
 
 Modules 3 and 4 can happen in parallel. 
 
 <br />
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/4fa4b648-50c5-44e8-8d72-dd2d4d546bca"> 
+  <img src="https://github.com/user-attachments/assets/afd59b84-626c-4ffd-bb64-7e564739ec88"
+">
+
+The coloured boxes in this figure correspond to additional flowcharts describing subprocesses in the section 'The Pipeline'. 
+
 </div>
 
 
@@ -87,7 +94,7 @@ Where the batch text file contains one sample ID per line, which corresponds to 
 
 </details>
 
-## The pipeline 
+## The Pipeline 
 
 Click on the drop down arrows to view a module. 
 
