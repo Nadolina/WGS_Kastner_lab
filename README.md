@@ -358,12 +358,17 @@ Hail has extensive functionality for querying matrix tables containing genomic d
 
 I have coded two scripts that employ the python API. The first is hail-gene-query.py. Hail-gene-query.py will collect any variants in the gene of interest, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. You will still need to load the hail module prior to running the script. 
 
-The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. 
+The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. This adds the same annotations, and will again aggregate across samples at each variant site to list the heterozygous and alt-homozygous samples called by GATK and/or bcftools. This will of course be limited to just the samples you pass. You can pass multiple samples, whether family members or just a group of samples of interest, to the script as a space-delimited list. Since the script will go through each sub-database, as opposed to just one for a specific gene, this program does take a bit more time. 
+
+I wanted to implement a way to further filter the hail-sample-query.py outputs. So, I coded an additional parameter -n (--n_non_ref), which allows the user to tell the program to only retain variants where the sum of non-reference genoetypes between the specified samples is equal to or greater than a given number. For example, if you know you have an affected parent and daughter and trio WGS including the other parent, you could pass -n 2, so that you only look at sites where at least two of the three samples contain alternate genotypes. 
 
 ```
 module load hail
 
 python3-hail hail-gene-query.py -g [GENE SYMBOL, i.e/MEFV]
+
+python3-hail hail-samply-query.py -s [SAMPLE ID 1] [SAMPLE ID 2] ... [SAMPLE ID N] -n [number of non-ref genotypes]
+ex.  python3-hail hail-samply-query.py -s 1122 1123 1124 -n 2
 
 ```
 
