@@ -1,6 +1,6 @@
 # Whole genome variant calling pipeline 
 
-This README details the four modules of the WGS pipeline developed for rare variant calling, the choices made in development, and how to use the various scripts. The modules are as such:
+This README details the modules of the WGS pipeline developed for rare variant calling, the choices made in development, and how to use the various scripts. The modules are as such:
 1. Revert the original BAM and re-align to GRCh38.
 2. Cleanup the alignment to prepare it for variant calling.
 3. Variant calling and filtering with GATK.
@@ -38,6 +38,16 @@ samtools/1.19
 GATK/4.6.0.0
 bcftools/1.19
 R
+VEP/112
+python3
+
+python packages:
+argparse
+hail
+pandas
+time
+datetime
+
 ```
 
 **You will also need the dependencies managed by a renv that can be found here: https://github.com/Nadolina/WGS-renv.git.** If you plan to copy the pipeline to another location, please follow the recommendations in (10) to clone the renv. You would then also need to modify the path to the renv in the Rmd. If you are in the Kastner group and using the shared installation of the pipeline, you do not need to clone the renv as there is already a shared clone. 
@@ -73,24 +83,17 @@ Most of our files come from NISC. We typically get three files of importance (th
 
 ## Inputs 
 
-1. The [sample].bam and its index, [sample].bam.bai
-2. GRCh38 with decoys and other accompanying files (/data/Kastner_PFS/references/HG38/) (1)
-
-With the current pipeline configuration, I recommend setting up your working directory as such: 
+This pipeline is primarily run using a text file that contains the path to one original BAM file on each line. This list will be referred to as the batch. You can run individual BAMs through pre-process-pipeline.sh and alignment_cleanup.sh but a batch will be required from variant calling onwards. Here is an example snippet of one batch:
 
 ```
-[sample 1]/
-  *bam
-  *bam.bai
-[sample 2]/
-  *bam 
-  *bam.bai 
-[sample n]/
-  *bam 
-  *bam.bai
-batch-[rundate].txt
+/data/Kastner_PFS/seq_data_storage/wgs_data/NISC_wgs_072023_dir/5915_dir/5915.bam
+/data/Kastner_PFS/seq_data_storage/wgs_data/592/592.bam
+/data/Kastner_PFS/seq_data_storage/wgs_data/NISC_wgs_072023_dir/5922/5922.bam
+/data/Kastner_PFS/seq_data_storage/wgs_data/5924/5924.bam
 ```
-Where the batch text file contains one sample ID per line, which corresponds to their directory names
+You will also need to make sure the script is pointing to a directory containing the GRCh38 reference with decoys and alternate sequences (1). The necessary files are currently stored in /data/Kastner_PFS/references/HG38/. 
+
+
 
 </details>
 
