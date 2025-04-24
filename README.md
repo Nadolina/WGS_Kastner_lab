@@ -94,7 +94,6 @@ This pipeline is primarily run using a text file that contains the path to one o
 You will also need to make sure the script is pointing to a directory containing the GRCh38 reference with decoys and alternate sequences (1). The necessary files are currently stored in /data/Kastner_PFS/references/HG38/. 
 
 
-
 </details>
 
 ## The Pipeline 
@@ -106,7 +105,7 @@ Click on the drop down arrows to view a module.
 
 ### Module 1: Re-alignment 
 
-The process of extracting reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipeline the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
+The process of extracting reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipe the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
 
 Samtools stats is run on both the original and final bam. Fastqc is run on the reverted bam to look at the quality of the sequence reads. 
 
@@ -123,16 +122,24 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [lo
   The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided.
 
   -l pass the path to the directory containing the bam; allows user to loop through a text file containing locations (like a batch)
-  -b pass the bam file 
+  -b pass the original bam file 
 ```
 <br />
-The -l option was implemented here as a temporary solution to passing batches, but the bam still needs to be copied into your working directory (the location) because the script moves into that directory. For the -l to work on a batch, you currently need to loop through a textfile with one location per line. It will work best if you use the prescribed working directory structure in "Inputs", where sample directories are named for sample IDs. This is because the -l looks for anything named *bam in the directory provided. For example: 
+The -l option was implemented as an earlier solution to batching, when the program still required that you copy BAM files to your work space in the format shown below. I left this option available for anyone who may prefer to use this format. Basically you would structure your working directory with one directory per sample, containing the original bam. Then, your batch file would contain a list of paths pointing to these sample folders in your working directory, one per line. If you are running from the working directory this could just be a list of sample names. 
 
 ```
-while read loc; do sbatch --mem=129g --cpus-per-task=16 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $loc ; done < HC-batch-091324.txt
+[sample]
+  [sample].bam
+  [sample].bai
 ```
 
-It is on my to-do list to wrap these scripts such as to accept a batch list as input. 
+If you want to run a batch with either -l or -b, you will need to loop through the batch textfile. Alternatively, you could just run it as per usual with one BAM path or location. 
+```
+while read location; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $location ; done < HC-batch-091324.txt
+while read sample; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -b $sample ; done < HC-batch-091324.txt
+```
+
+It is on my to-do list to wrap these scripts such as to accept a batch list as input without requiring looping. 
 
 </details>
 
