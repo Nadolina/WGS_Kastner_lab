@@ -30,19 +30,26 @@ done
 
 ## Initiating the batch file that will be passed to the globus transfer command 
 rundate=`date +'%m%d%y'`
-> globus-transfer-${rundate}-${batchfile}
+>globus-transfer-${rundate}-${batchfile}
 
-batch1=$(grep '/data/Kastner_PFS/WGS/20*' ${batchfile} )
+set +e
+
+batch1=$(grep '/data/Kastner_PFS/WGS/20*' ${batchfile})
 batch2=$(grep -v '/data/Kastner_PFS/WGS/20*' ${batchfile})
 
-batch=$(cat ${batchfile})
+set -e
 
-for line in $batch
+fullbatch=$(cat ${batchfile})
+
+
+for line in $fullbatch
 do 
+
+    set +e 
 
     ## if-fi checks for formatting of file name
     ## some files have been moved in Kastner_PFS and so their "modification date" does not reflect their true date of receipt
-    if echo ${batch1} | grep -q ${line} 
+    if echo ${batch1} | grep -q ${line}
         then 
             ## Isolating the sample name from the original BAM file 
             sample=$(echo ${line} | awk -F '/' '{print $NF}' | sed 's/.bam//g' )
@@ -50,7 +57,7 @@ do
             ## Parsing path to get original date of receipt 
             mod_date=$(echo ${line} | cut -f 5 -d'/')
             printf "The bam file ${line} was created in ${mod_date}.\n"
-    elif echo ${batch2} | grep -q ${line}
+    elif echo ${batch2} | grep -q ${line} 
         then
             sample=$(echo ${line} | awk -F '/' '{print $NF}' | sed 's/.bam//g' )
 
@@ -58,6 +65,10 @@ do
             mod_date=$(date -r ${line} | awk -F ' ' '{print $NF}')
             printf "The bam file ${line} was created in ${mod_date}.\n"
     fi
+
+    set -e
+
+echo $mod_date $sample
         
     ## globus mkdir does not have the -p function like linux to check for the existence of a file or folder 
     ## using the "stat" output to see whether a folder already exists for a given sample, and creating it if not 
@@ -100,7 +111,7 @@ do
 done 
 
 ## Instructions for output batch file. 
-printf "\nThe file globus-transfer-${rundate}-${batchfile} will contain any BQSR *bam and *bai files available to transfer to ketu."
+printf "\nThe file globus-transfer-${rundate}-${batchfile} will contain any BQSR *bam and *bai files available to transfer to ketu.\n"
 printf "Run the command 
 
         globus transfer --no-verify-checksum --batch globus-transfer-${rundate}-${batchfile} {origin endpoint globus ID} {destination endpoint globus ID}

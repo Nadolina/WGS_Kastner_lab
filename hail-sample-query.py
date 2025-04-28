@@ -60,30 +60,6 @@ def sample_search(db):
 
 def build_df(g_tb,b_tb):
 
-    # print ("\nInitializing hail and loading matrix tables.\n")
-    # mt=hl.read_matrix_table(db)
-
-    # ## Removing all samples that are not in the list passed 
-
-    # set_to_remove=hl.literal(set(samples))
-    # query=mt.filter_cols(set_to_remove.contains(mt['s']))
-    
-    # print ("\nConfirming correct samples were subsetted from %s:" % db)
-    # query.s.show()
-
-    # ## Removing any variants that have no calls or do not contain 2 non-ref genotypes
-    # query=hl.variant_qc(query)
-    # query=query.filter_rows(query.variant_qc['n_non_ref']>=num_non_ref) 
-
-    # query=query.filter_rows((query.info['IMPACT'][0] == 'HIGH') | (query.info['IMPACT'][0] == 'MODERATE'))
-
-    # query=query.annotate_rows(het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
-    #                     hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
-
-    # query=query.drop('AD','GT','DP','GQ','MIN_DP','PGT','PID','PL','PS','RGQ','SB')
-
-    # tb=query.localize_entries()
-
     ## Storing table in chache for improved speed 
     g_tb=g_tb.persist()
     b_tb=b_tb.persist()
@@ -100,13 +76,6 @@ def build_df(g_tb,b_tb):
 
     ## re-keying our table by locus allele 
     g_tb=g_tb.key_by('locus','alleles')
-
-    # print ("\nAdding pLI, LOEUF and missense z-score annotations from gnomad constraint table.")
-    # tb=tb.annotate(gene=tb.info['SYMBOL'][0], gene_id=tb.info['Gene'][0], transcript=tb.info['Feature'][0])
-    # tb=tb.key_by('gene','gene_id','transcript') 
-    # tb=tb.annotate(pLI=constraint[tb.key].lof['pLI'], LOEUF=constraint[tb.key].lof.oe_ci.upper, mis_z_score=constraint[tb.key].mis.z_score)
-    # ## re-keying our table by locus allele 
-    # tb=tb.key_by('locus','alleles')
 
     ## Annotating the GATK table to show variants also called by BCFTOOLS
     g_tb=g_tb.annotate(bcftools_het_samples=b_tb[g_tb.key].het_samples,
