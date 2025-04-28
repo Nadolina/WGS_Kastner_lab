@@ -15,7 +15,7 @@ Help()
 	echo ""
 	echo "	You must supply just one of -b, -o or -l. The multiple input options are designed to provide some flexiblity to the location of a bam file."
 	echo "	-b merged bam alignment"
-	echo " 	-l batch list of locations; instead of directly providing the merged bam, you can provide the batch list containing one sample ID on each line, corresponding to that sample's folder name."
+	echo " 	-l locations; instead of directly providing the merged bam, you can provide the batch list containing one sample ID on each line, corresponding to that sample's folder name."
 	echo "	   This option will then be looking for "/[sample_ID]/[sample ID]_out/[sample ID].mergedaln.bam", and will move into [sample ID]_out, so if your directories do not comply with that structure, use -b instead."
 	echo "	   Note that the script is still designed to just take one bam at a time, so the user will have to loop through the batch list themselves, this -l just permits for that. I will internalize looping capabilities in the future."
 	echo "	   For now use something like:" 

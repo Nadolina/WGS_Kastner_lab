@@ -28,8 +28,8 @@ def gene_search(db):
 
     print ("\nStarting query of % s in % s." % (args.gene,db))
 
-    query=mt.filter_rows(mt.info['SYMBOL'].contains(gene)
-    if query.rows().count() == 0:
+    query=mt.filter_rows(mt.info['SYMBOL'].contains(gene))
+    if query.rows().count()==0:
         print ('%s not found in %s' % (gene,db))
         return None
 

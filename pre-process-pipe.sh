@@ -21,7 +21,7 @@ Help()
 
 	echo "You need to pass EITHER -b or -l, but NOT BOTH. I included the -l argument for more flexibility, because I commonly run batches by looping through a list of folder locations."
 	echo "The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided."
-	echo "Alternatively, you can just provided the bam to -b, but in that case you should be running from the directory where the bam resides."
+	echo "Alternatively, you can just provided the bam to -b."
 
 }
 
