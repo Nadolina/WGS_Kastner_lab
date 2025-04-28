@@ -157,7 +157,7 @@ do
 
     generate_HC_swarm ${bam} ${id}
 
-    jid=$(swarm --module GATK --gres=lscratch:200 -g 20 -t 4 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
+    jid=$(swarm --module GATK --gres=lscratch:200 --logdir ${PWD}/${id}/${id}_out/logs_${rundate} ${PWD}/HC-${rundate}-${id}.swarm)
     echo $jid
     jids+=`echo "$jid "`
 done 
@@ -170,7 +170,7 @@ printf "Combining GVCFs dependent on following jobs completing: $jids\n"
 ## One swarm job per chromosome
 
 generate_combineGVCF_swarm
-combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:200 -g 10 -t 4 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
+combine_jid=$(swarm --module GATK --dependency afterok:$jidlist --gres=lscratch:200 --logdir ${PWD}/combinedGVCFs_logs/ ${PWD}/combinedGVCFs-${rundate}.swarm) ## a second jid to hold genotyping until all combineGVCF jobs are done 
 echo $combine_jid
 printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. Genotyping will began upon completion of $combine_jid\n"
 
@@ -179,7 +179,7 @@ printf "Haplotype caller swarms completed, combining GVCFs across chromosomes. G
 ## One swarm job per chromosome 
 
 generate_genotypeGVCFs_swarm
-genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:200 -g 10 -t 4 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
+genotype_jid=$(swarm --module GATK --dependency afterok:$combine_jid --gres=lscratch:200 --logdir ${PWD}/genotypeGVCFs_logs ${PWD}/genotypeGVCFs-${rundate}.swarm)
 echo $genotypejid
 
 sbatch --mem=96g --cpus-per-task=24 --gres=lscratch:400 --time=1-06:00:00 --dependency=afterok:$genotype_jid ${sourcedir}/run-VQSR.sh -v ${PWD}/genotypedVCFs_${rundate}

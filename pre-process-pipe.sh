@@ -19,9 +19,14 @@ Help()
 	echo "OR"
 	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [location]"
 
-	echo "You need to pass EITHER -b or -l, but NOT BOTH. I included the -l argument for more flexibility, because I commonly run batches by looping through a list of folder locations."
+	echo "You need to pass EITHER -b or -l, but NOT BOTH."
+	echo "The -l is retained as a legacy option, and was used for looping through original BAMs that had been copied to the working directory but had variable naming schemes."
 	echo "The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided."
-	echo "Alternatively, you can just provided the bam to -b, but in that case you should be running from the directory where the bam resides."
+	echo "The -b is preferable because you can point to an original BAM anywhere on biowulf, i.e./ Kastner_PFS, (pending permissions) without having to copy large BAMs."
+	echo ""
+	echo "You can pass a location or BAM directly to -l and -b, but you can also loop through a file of either, with one location/path per line."
+	echo "while read path; do sbatch [OPTIONS] pre-process-pipe.sh -b $\{path} ; done < batch.txt"
+	echo ""
 
 }
 

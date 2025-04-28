@@ -10,7 +10,7 @@ Help()
     echo "
     Use the following command:
 
-        sbatch [parameters] build_db.sh -b [original batch]
+        sbatch [parameters] globus_transfer.sh -b [original batch]
 
         -b batch file of paths to original bams 
         -h help

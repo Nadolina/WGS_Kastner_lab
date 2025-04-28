@@ -11,6 +11,10 @@ Help()
 	echo ""
 	echo "To run this pipeline use the following command:"
 	echo "sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] bcftools.sh -b [batch files with sample IDs]"
+	echo ""
+	echo " -b batch file with one sample ID per line, pointing to your working directory for a given sample"
+	echo " -o file with one path per line, pointing to the original BAMs used for realignment"
+	echo ""
 
 }
 
@@ -80,7 +84,8 @@ do
 		-o bcftools_${rundate}/mpileup-${chrnum}-${rundate}.vcf.gz \
 		-Oz --threads 8 \
 		2> ${PWD}/bcftools_logs/mpileup-${chrnum}-${rundate}-\${SLURM_JOB_ID}.log; bcftools index -t --threads 8 -o bcftools_${rundate}/mpileup-${chrnum}-${rundate}.vcf.gz.tbi bcftools_${rundate}/mpileup-${chrnum}-${rundate}.vcf.gz\n" >> mpileup-${rundate}.swarm
-	printf "bcftools annotate -a $thousandgAF \ ## Annotating with thousand genomes allele frequency data
+	## Annotating with thousand genomes allele frequency data
+	printf "bcftools annotate -a $thousandgAF \ 
 		-h $thousandgHDR \
 		-c CHROM,POS,REF,ALT,REF_AN,REF_AC \
 		-r ${chrnum} \
