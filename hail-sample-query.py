@@ -139,17 +139,17 @@ def build_df(g_tb,b_tb):
 # Tracking query time 
 start=time.time() 
 
-g_tb_1=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_031925/db1.concat.031725.mt')
-b_tb_1=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_032625/db1.concat.032525.mt')
+g_tb_1=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db1.concat.042825.mt')
+b_tb_1=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db1.concat.050125.mt')
 
-g_tb_2=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_031925/db2.concat.031725.mt')
-b_tb_2=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_032625/db2.concat.032525.mt')
+g_tb_2=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db2.concat.042825.mt')
+b_tb_2=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db2.concat.050125.mt')
 
-g_tb_3=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_031925/db3.concat.031725.mt')
-b_tb_3=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_032625/db3.concat.032525.mt')
+g_tb_3=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db3.concat.042825.mt')
+b_tb_3=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db3.concat.050125.mt')
 
-g_tb_4=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_031925/db4.concat.031725.mt')
-b_tb_4=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_032625/db4.concat.032525.mt')
+g_tb_4=sample_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db4.concat.042825.mt')
+b_tb_4=sample_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db4.concat.050125.mt')
 
 db1_df=build_df(g_tb_1,b_tb_1)
 db2_df=build_df(g_tb_2,b_tb_2)
