@@ -25,8 +25,12 @@ if args.num_non_ref:
     print ("Number of non-ref genotypes to filter for: %i\n" % args.num_non_ref)
     num_non_ref=args.num_non_ref
 
-hl.init(spark_conf={'spark.driver.memory': '25g'}, log='/data/Kastner_PFS/WGS/cohort_db/version_031925/query_logs/testing_032525.log', append=True)
-constraint=hl.read_table('/data/brajukanm/hail_testing/constraint/gnomad.v4.1.constraint_metrics.ht')
+samplejoin="-".join(samples)
+logname="".join(['hail-',samplejoin,'-',date.today().strftime('%m%d%y'),'.log'])
+hl.init(spark_conf={'spark.driver.memory': '25g'}, log=logname)
+
+## Loading constraint matrix table from gnomad v4.1
+constraint=hl.read_table('/data/Kastner_PFS/references/gnomad_v4.1/gnomad.v4.1.constraint_metrics.ht')
 constraint=constraint.key_by('gene','gene_id','transcript')
 
 ## FUNCTIONS ------------------------------
@@ -64,14 +68,10 @@ def build_df(g_tb,b_tb):
     g_tb=g_tb.persist()
     b_tb=b_tb.persist()
 
-    ## Loading constraint matrix table
-    constraint=hl.read_table('/data/brajukanm/hail_testing/constraint/gnomad.v4.1.constraint_metrics.ht')
-
     print ("\nAdding pLI, LOEUF and missense z-score annotations from gnomad constraint table to %s." % g_tb)
     g_tb=g_tb.annotate(gene=g_tb.info['SYMBOL'][0], gene_id=g_tb.info['Gene'][0], transcript=g_tb.info['Feature'][0])
-    g_tb=g_tb.key_by('gene','gene_id','transcript') 
-    ## need to key-by same columns for annotation (no locus-allele in constraint)
-    constraint=constraint.key_by('gene','gene_id','transcript')
+    g_tb=g_tb.key_by('gene','gene_id','transcript') ## need to key-by same columns for annotation (no locus-allele in constraint)
+
     g_tb=g_tb.annotate(pLI=constraint[g_tb.key].lof['pLI'], LOEUF=constraint[g_tb.key].lof.oe_ci.upper, mis_z_score=constraint[g_tb.key].mis.z_score)
 
     ## re-keying our table by locus allele 

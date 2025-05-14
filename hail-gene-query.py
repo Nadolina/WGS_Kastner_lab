@@ -5,6 +5,7 @@ import hail as hl
 import pandas as pd
 import time
 from datetime import date
+from pathlib import Path
 
 ## Parsing gene symbol from command line input 
 p=argparse.ArgumentParser()
@@ -15,9 +16,12 @@ if args.gene:
     gene=str(args.gene)
 
 ## Initializing hail and collecting pre-built matrix tables for querying
-logname="".join(['/data/Kastner_PFS/WGS/cohort_db/version_031925/query_logs/query-',gene,'-',date.today().strftime('%m%d%y'),'.log'])
-hl.init(log=logname)
+logname="".join(['hail-',gene,'-',date.today().strftime('%m%d%y'),'.log'])
+hl.init(spark_conf={'spark.driver.memory': '25g'}, log=logname)
 
+## Loading constraint matrix table from gnomad v4.1
+constraint=hl.read_table('/data/Kastner_PFS/references/gnomad_v4.1/gnomad.v4.1.constraint_metrics.ht')
+constraint=constraint.key_by('gene','gene_id','transcript')
 
 ## FUNCTIONS ---------------------
 
@@ -57,13 +61,6 @@ def build_df(g_tb,b_tb):
     ## Storing table in chache for improved speed 
     g_tb=g_tb.persist()
     b_tb=b_tb.persist()
-    # g_tb=g_tb.checkpoint('g_tb_temp.ht', overwrite=True)
-    # b_tb=b_tb.checkpoint('b_tb_temp.ht', overwrite=True)
-
-    ## Loading constraint matrix table
-    constraint=hl.read_table('/data/brajukanm/hail_testing/constraint/gnomad.v4.1.constraint_metrics.ht')
-
-    # tb=tb.persist()
 
     ## adding pLI, LOEUF and mis_z_score from gnomad's pre-built constraint hail table to GATK db - will add to remaining bcftools variants later.
     ## https://gnomad.broadinstitute.org/help/constraint
@@ -71,8 +68,7 @@ def build_df(g_tb,b_tb):
     print ("\nAdding pLI, LOEUF and missense z-score annotations from gnomad constraint table to %s." % g_tb)
     g_tb=g_tb.annotate(gene=g_tb.info['SYMBOL'][0], gene_id=g_tb.info['Gene'][0], transcript=g_tb.info['Feature'][0])
     g_tb=g_tb.key_by('gene','gene_id','transcript') 
-    ## need to key-by same columns for annotation (no locus-allele in constraint)
-    constraint=constraint.key_by('gene','gene_id','transcript')
+    ## need to key-by same columns as constraint table for annotation (no locus-allele in constraint)
     g_tb=g_tb.annotate(pLI=constraint[g_tb.key].lof['pLI'], LOEUF=constraint[g_tb.key].lof.oe_ci.upper, mis_z_score=constraint[g_tb.key].mis.z_score)
 
     ## re-keying our table by locus allele 
