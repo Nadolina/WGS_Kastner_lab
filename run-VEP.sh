@@ -126,7 +126,7 @@ do
 
     # a second swarm for filtering post annotation
     echo "filter_vep -i ${prefix}-VEP-VCFs/${chrnum}.vcf \
-        -f 'gnomADg_AF_grpmax < 0.1 or not gnomADg_AF_grpmax' \
+        -f 'gnomADg_AF_joint < 0.2 or not gnomADg_AF_joint' \
         --only_matched \
         --format vcf \
         --output_file ${prefix}-VEP-VCFs/${chrnum}.filtered.vcf \
