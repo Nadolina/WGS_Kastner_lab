@@ -126,14 +126,13 @@ batch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -b [ori
   OR
 sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [location]
 
-  You need to pass EITHER -b or -l, but NOT BOTH.
   The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided.
 
-  -l pass the path to the directory containing the bam; allows user to loop through a text file containing locations (like a batch)
+  -l pass the path to the directory containing the bam
   -b pass the original bam file 
 ```
 <br />
-The -l option was implemented as an earlier solution to batching, when the program still required that you copy BAM files to your work space in the format shown below. I left this option available for anyone who may prefer to use this format. Basically you would structure your working directory with one directory per sample, containing the original bam. Then, your batch file would contain a list of paths pointing to these sample folders in your working directory, one per line. If you are running from the working directory this could just be a list of sample names. 
+The -l option was implemented as an earlier solution to batching, when the program still required that you copy BAM files to your work space in the format shown below. I left this option available for anyone who may prefer to use this format. Basically you would structure your working directory with one directory per sample, containing the original bam. Then, your batch file would contain a list of paths pointing to these sample folders in your working directory, one per line. 
 
 ```
 [sample]
@@ -197,11 +196,13 @@ After genotyping, we then need to filter the called variants. GATK has a program
 ```
 sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile]
 
-  -b batch textfile with one
+  -b This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line.
+  -o This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line.
   -h help
+
 ```
 
-As with previous modules, the -b mostly anticipates the structure prescribed in "Inputs", where each directory is named for it's sample ID. Unlike previous modules, -b can take the whole textfile as an input, rather than having to loop through it on the command line.
+The -b is comparable to -l in previous modules. The -o requires a textfile of paths pointing to the original BAMs for a given sample, which the program will parse to identify the files it requires. You do not need to loop through the textfile as with previous modules. 
 
 </details>
 
