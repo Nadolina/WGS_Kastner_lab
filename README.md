@@ -412,9 +412,39 @@ Storing our re-aligned samples and variants is an essential final step in this w
 | File | Destination | Path |
 |------|-------------|------|
 |[SAMPLE]_bqsr_1.bam | ketu | /mnt/[USERNAME]/ketu_labs/Kastner/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
+|original BAM | ketu | /mnt/[USERNAME]/ketu_labs/Kastner/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
+| sample GATK VCF (unannotated) | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
+| sample bcftools VCF (unannotated) | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
+| original VCFs | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
 
+To perform these transfers for a given batch use data_organization.sh. You must pass the batch-[DATE].txt file, and you can optionally pass the __unannotated__ batch GATK and bcftools VCFs. The tool will run if you pass just the batch text file, or the batch file and just one of the batch VCFs. It will generate appropriate outputs from whatever files are provded. I use bcftools view with the -s flag to extract a sample VCF from a given batch VCF. The program produces 1) a globus transfer file with the naming scheme globus-transfer-[CURRENT DATE]-[BATCH NAME].txt, and 2) a swarm file with the name vcf_transfer_[BATCH NAME].swarm. To avoid data loss, I do not initite these transfers from within the program. Instead, I __strongly encourage__ the user to review both transfer files for potential errors before manually submitting them. Run the program and initiate the subsequent transfers as below: 
 
+```
 
+sbatch [parameters] globus_transfer.sh -o [batch] -g [GATK VCF (unannotated)] -b [bcftools VCF (unannotated)]
+
+-o batch file of paths to original bams 
+-g gatk batch VCF
+-b bcftools batch VCF
+-h help
+
+```
+
+Use the globus endpoint search to find the globus origin and destination IDs for biowulf and ketu. The origin endpoint ID (biowulf) should be e2620047-6d04-11e5-ba46-22000b92c6ec. Use the flag --dry-run to print globus submission output, as an additional check before actually submitting. Remove the flag to actually submitt the transfer. 
+
+Submit the swarm to transfer new and original sample VCFs from your working director to Kastner_PFS. I use the -b flag to group a few bcftools view commands onto the same swarm job, because a single command is very quick, and grouping commands allows for more efficient use of resources. 
+
+```
+
+globus endpoint search NIH
+globus endpoint search nhgrishell02
+globus transfer --no-verify-checksum --batch globus-transfer-${rundate}-${batch_prefix}.txt {origin endpoint globus ID} {destination endpoint globus ID} --dry-run
+
+swarm --module bcftools -b 3 vcf_transfer_${batch_prefix}.swarm
+
+```
+
+I plan to add another module to this progran to move the __annotated__ batch VCFs to their destination in /data/Kastner_PFS/WGS/cohort_db/batch_VCFs/. 
 
 </details>
 
@@ -438,7 +468,8 @@ Storing our re-aligned samples and variants is an essential final step in this w
 
 1. Implement a batching solution for modules one and two. The -l in modules 1 and 2 serves as a bit of a work-around to batching. The problem with the current set up is you need to copy the bam and pre-make working directories for each sample. I think I will wrap this such that it a) allows the user to point to a bam not in the working directory and b) has a second mandatory flag for the sample ID, so that creation of the sample ID-named working directory is standardized. 
 2. Parallelize modules 1 and 2. I think we could break alignment by chromosome or read group and carry that break through base recalibration.
-3. Consolidate build_hail_2.sh and build_hail_bcftools.sh. 
+3. Consolidate build_hail_2.sh and build_hail_bcftools.sh.
+4. Transfer annotated batch VCFs to Kastner_PFS with data_organization. 
 
 ## References 
 
