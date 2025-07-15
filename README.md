@@ -7,7 +7,8 @@ This README details the modules of the WGS pipeline developed for rare variant c
 4. Variant calling and filtering with bcftools.
 5. Separate annotation of GATK and bcftools calls with VEP.
 6. Construction of hail databases for each GATK and bcftools.
-7. Querying the database for samples, genes or other cohort characteristics. 
+7. Querying the database for samples, genes or other cohort characteristics.
+8. Transferring data from your working directory to long-term storage 
 
 Modules 3 and 4 can happen in parallel. 
 
@@ -140,7 +141,7 @@ The -l option was implemented as an earlier solution to batching, when the progr
   [sample].bai
 ```
 
-If you want to run a batch with either -l or -b, you will need to loop through the batch textfile. Alternatively, you could just run it as per usual with one BAM path or location. 
+If you want to run a batch with either -l or -b, you will need to loop through the batch textfile. Alternatively, you can run the program without looping, with just one BAM at a time. 
 ```
 while read location; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $location ; done < HC-batch-091324.txt
 while read sample; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -b $sample ; done < HC-batch-091324.txt
@@ -274,13 +275,13 @@ Annotations employed include:
 * ClinVar
 * GERP
 
-I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on this --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls on a canonical transcript (11). 
+I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on the --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls within a canonical transcript (11). 
 
-After annotation, I apply a very simple filter of 'gnomADg_AF_grpmax < 0.1 or not gnomADg_AF_grpmax'. This just means I only retain variants that have a maximum population allele frequency (grpmax) of 0.1, or if they do have a grpmax AF at all, because absense from gnomAD may indicate the variant is rare. I also apply --only_matched, which will only retain consequence blocks that pass the prescribed filters, if a variant has more than one block. This is more useful if a variant has multiple recorded consequences, i.e./ "intron_variant&non_coding_transcript_variant" and "upstream_gene_variant", and one of your filters is to retain only intron variants. Then, the --only_matched would remove the upstream_gene_variant block. Allelic frequenices for a given variant do not change between blocks, so this does not really apply but I have included it nonetheless. 
+After annotation, I apply a very simple filter of 'gnomADg_AF_joint < 0.2 or not gnomADg_AF_joint'. So, we only retain variants that have a maximum joint (gnomAD exome and genome) allele frequency of 0.2, or if they do not have a joint AF at all, because absense from gnomAD may indicate the variant is rare. I also apply --only_matched, which will only retain consequence blocks that pass the prescribed filters, if a variant has more than one block. This is more useful if a variant has multiple recorded consequences, i.e./ "intron_variant&non_coding_transcript_variant" and "upstream_gene_variant", and one of your filters is to retain only intron variants. Then, the --only_matched would remove the upstream_gene_variant block. Allelic frequenices for a given variant do not change between blocks, so this does not really apply but I have included it nonetheless. 
 
 After annotation and filtering you will have a *vcf and *filtered.vcf for each chromosome for a batch of samples. 
 
-This VEP script just takes a VCF as input, so it can be applied to one or more samples from any variant caller. I pass batch VCFs from both GATK and bcftools to run-VEP.sh. VEP does not have sophisticated threading, parallelization or lscratch space, so I recommend only allocating 10-15g of memory across the biowulf default of 2 threads. 
+This VEP script just takes a VCF as input, so it can be applied to one or more samples from any variant caller. I pass batch VCFs from both GATK and bcftools to run-VEP.sh. VEP does not have sophisticated threading, parallelization or lscratch space usage, so I recommend only allocating 10-15g of memory across the biowulf default of 2 threads. 
 
 ```
 sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
@@ -300,7 +301,7 @@ Hail is a database software designed specifically for managing genomic data, bec
 
 Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the query, and also perform some reformating for easier filtering when the output TSV is view in excel. 
 
-The VCFs need to be further modified to accomodate this sub-database configuration. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools. These are a little redundant, and will be consolidated at some point, per my laundry list. I only wrote them separately because the naming scheme for bcftools files and bcftools annotations are different from GATK. The scripts:
+Batch VCFs need to be modified before building these four hail databases. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools.sh. These are a little redundant, and will be consolidated at some point, per my laundry list. I only wrote them separately because the naming scheme for bcftools files and bcftools annotations are different from GATK. The scripts:
 1. accept a list of folders containing batch annotated VCF files
 2. merge chromosomes across batches annotated VCFs (i.e./ 1 with 1, 2 with 2, etc.)
 3. convert consequence blocks into a Hail compatible format (bcftools csq-split pluggin)
@@ -336,9 +337,9 @@ sbatch --mem=10g -c 6 --gres=lscratch:200 --time=04:00:00 /data/Kastner_PFS/scri
 You can pass as many folders of annotated VCFs as you'd like. 
 ```
 
-__NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the sub-databases are constructed. For each of these db[1-4].concat.[rundate].vcf.gz files, you need to perform the following steps. 
+__NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the four hail databases are constructed. To construct the Hail databases, you must: 
 1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_031925 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
-2. Copy the VCFs to your new directory.
+2. Move the VCFs to your new directory.
 3. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
 
 ```
@@ -372,7 +373,7 @@ hl.import_vcf('[merged VCF]',force_bgz=True,reference_genome='GRCh38',array_elem
 
 Use 'quit()' to exit the interactive python session. 
 
-At this point you should have four matrix tables ready for use independently or with the query scripts provided! 
+At this point you should have eight matrix tables (between GATK and bcftools) ready for use independently or with the query scripts provided! 
 
 </details>
 
@@ -381,13 +382,13 @@ At this point you should have four matrix tables ready for use independently or 
 
 ### Module 7: Querying the Hail database 
 
-Hail has extensive functionality for querying matrix tables containing genomic data. I have constructed two scripts for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). I also recommend consulting their forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
+Hail has extensive functionality for querying matrix tables containing genomic data. I have coded two python programs for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). The programs are hail-gene-query.py and hail-sample-query.py, which are located in /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_Lab. I also recommend consulting their forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
 
-I have coded two scripts that employ the python API. The first is hail-gene-query.py. Hail-gene-query.py will collect any variants in the gene of interest, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. You will still need to load the hail module prior to running the script. 
+Hail-gene-query.py will collect any variants in the gene of interest, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. 
 
-The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. This adds the same annotations, and will again aggregate across samples at each variant site to list the heterozygous and alt-homozygous samples called by GATK and/or bcftools. This will of course be limited to just the samples you pass. You can pass multiple samples, whether family members or just a group of samples of interest, to the script as a space-delimited list. Since the script will go through each sub-database, as opposed to just one for a specific gene, this program does take a bit more time. 
+The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. This adds the same annotations, and will again aggregate across samples at each variant site to list the heterozygous and alt-homozygous samples called by GATK and/or bcftools. This will of course be limited to just the samples you pass. You can pass multiple samples to the program as a space-delimited list. Since the script will go through each sub-database, as opposed to just one for a specific gene, this program does take a bit more time. 
 
-I wanted to implement a way to further filter the hail-sample-query.py outputs. So, I coded an additional parameter -n (--n_non_ref), which allows the user to tell the program to only retain variants where the sum of non-reference genoetypes between the specified samples is equal to or greater than a given number. For example, if you know you have an affected parent and daughter and trio WGS including the other parent, you could pass -n 2, so that you only look at sites where at least two of the three samples contain alternate genotypes. 
+I wanted to implement a way to further filter the hail-sample-query.py outputs. So, I coded an additional parameter -n (--n_non_ref), which allows the user to tell the program to only retain variants where the sum of non-reference genoetypes between the prescribed samples is equal to or greater than a given number. For example, if you have a trio, with a known effected parent and patient, you could pass -n 2, so that you only look at sites where at least two of the three samples contain alternate genotypes. You need to pass a minimum of -n 1. 
 
 ```
 module load hail
@@ -398,6 +399,17 @@ python3-hail hail-samply-query.py -s [SAMPLE ID 1] [SAMPLE ID 2] ... [SAMPLE ID 
 ex.  python3-hail hail-samply-query.py -s 1122 1123 1124 -n 2
 
 ```
+
+</details>
+
+<details>
+<summary>Module 8: Transferring completed VCFs and BAMs to long-term storage</summary>
+### Module 8: Transferring completed VCFs and BAMs to long-term storage 
+
+Storing our re-aligned samples and variants is an essential final step in this workflow. All data from modules 1-5 should be in your working directory (i.e: /data/[USERNAME]/working_dir/). Some of the files you produced need to be retained. See the table below for a list of retained files and their storage destination. 
+
+
+
 
 </details>
 
