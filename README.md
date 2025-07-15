@@ -404,9 +404,14 @@ ex.  python3-hail hail-samply-query.py -s 1122 1123 1124 -n 2
 
 <details>
 <summary>Module 8: Transferring completed VCFs and BAMs to long-term storage</summary>
+  
 ### Module 8: Transferring completed VCFs and BAMs to long-term storage 
 
 Storing our re-aligned samples and variants is an essential final step in this workflow. All data from modules 1-5 should be in your working directory (i.e: /data/[USERNAME]/working_dir/). Some of the files you produced need to be retained. See the table below for a list of retained files and their storage destination. 
+
+| File | Destination | Path |
+|------|-------------|------|
+|[SAMPLE]_bqsr_1.bam | ketu | /mnt/[USERNAME]/ketu_labs/Kastner/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
 
 
 
