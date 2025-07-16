@@ -195,15 +195,15 @@ if [[ -f ${batch} ]] && ([[ -f ${gatk} ]] || [[ -f ${bcftools} ]]); then
             ## Creating an individual VCF for the sample 
             echo ""
             echo "Adding command to vcf_transfer_${batch_prefix}.swarm to generate VCF for sample ${sample} from GATK variant calls: 
-                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${gatk}"
-            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${gatk}" >> vcf_transfer_${batch_prefix}.swarm
+                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${PWD}/{gatk}"
+            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${PWD}/${gatk}" >> vcf_transfer_${batch_prefix}.swarm
         fi 
 
         if [ -n ${bcftools} ]; then
             echo ""
             echo "Adding command to vcf_transfer_${batch_prefix}.swarm to generate VCF for sample ${sample} from bcftools variant calls:
-                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${bcftools}"
-            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${bcftools}" >> vcf_transfer_${batch_prefix}.swarm
+                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${PWD}/${bcftools}"
+            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${PWD}/${bcftools}" >> vcf_transfer_${batch_prefix}.swarm
         fi
 
     done < ${batch}
