@@ -149,8 +149,9 @@ if [[ -n ${batch} ]]; then
     ##  1. generate the globus transfer batch file 
     ##  2. generate a text file to move original VCFs to their appropriate sub-directory in /data/Kastner_PFS/WGS/[YEAR]/[SAMPLE]
     while read bam; 
-        do run_batch ${bam}
-        do get_orig_vcfs ${bam}
+        do 
+            run_batch ${bam}
+            get_orig_vcfs ${bam}
     done < ${batch}
 
 else
