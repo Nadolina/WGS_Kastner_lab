@@ -417,7 +417,7 @@ Storing our re-aligned samples and variants is an essential final step in this w
 | sample bcftools VCF (unannotated) | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
 | original VCFs | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
 
-To perform these transfers for a given batch use data_organization.sh. You must pass the batch-[DATE].txt file, and you can optionally pass the __unannotated__ batch GATK and bcftools VCFs. The tool will run if you pass just the batch text file, or the batch file and just one of the batch VCFs. It will generate appropriate outputs from whatever files are provded. I use bcftools view with the -s flag to extract a sample VCF from a given batch VCF. The program produces 1) a globus transfer file with the naming scheme globus-transfer-[CURRENT DATE]-[BATCH NAME].txt, and 2) a swarm file with the name vcf_transfer_[BATCH NAME].swarm. To avoid data loss, I do not initite these transfers from within the program. Instead, I __strongly encourage__ the user to review both transfer files for potential errors before manually submitting them. Run the program and initiate the subsequent transfers as below: 
+To perform these transfers for a given batch use data_organization.sh. You must pass the batch-[DATE].txt file, and you can optionally pass the __unannotated__ batch GATK and bcftools VCFs. The tool will run if you pass just the batch text file, or the batch file and just one of the batch VCFs. It will generate appropriate outputs from whatever files are provded. I use bcftools view with the -s flag to extract a sample VCF from a given batch VCF. The program produces 1) a globus transfer file with the naming scheme globus-transfer-[CURRENT DATE]-[BATCH NAME].txt, 2) a swarm file with the name vcf_transfer_[BATCH NAME].swarm, and 3) a text file named orig_vcf_transfer_[DATE]-[BATCHNAME].txt. To avoid data loss, I do not initite these transfers from within the program. Instead, I __strongly encourage__ the user to review all three transfer files for errors before manually submitting them. Run the program and initiate the subsequent transfers as below: 
 
 ```
 
@@ -442,6 +442,11 @@ globus transfer --no-verify-checksum --batch globus-transfer-${rundate}-${batch_
 
 swarm --module bcftools -b 3 vcf_transfer_${batch_prefix}.swarm
 
+```
+The final file, the text file, contains just a series of mv commands. These commands will take the original VCFs for a given sample and move them into their prescribed directory (i.e:/data/Kastner_PFS/WGS/[YEAR OF ORIGN]/[SAMPLE]). These VCFs are mostly stored in seq_data_storage, but some are stored elsewhere, so in an effort to consolidate everything in one directory with consistent naming, we are performing these moves. The mv command is very fast, so if you want to make this txt into a swarm file you can, but I recommend just running them through a loop; it will take just a few seconds. 
+
+```
+while read command; do ${command} ; done < [TEXT FILE]
 ```
 
 I plan to add another module to this progran to move the __annotated__ batch VCFs to their destination in /data/Kastner_PFS/WGS/cohort_db/batch_VCFs/. 
