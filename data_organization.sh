@@ -78,10 +78,14 @@ function run_batch() {
         printf "${status}\n"
     fi
 
-    echo ""
-    echo "Adding ${bam} and ${bai} to globus transfer: globus-transfer-${rundate}-${batch_prefix}.txt"
-    echo "--no-recursive ${bam} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bam" >> globus-transfer-${rundate}-${batch_prefix}.txt
-    echo "--no-recursive ${bai} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bai" >> globus-transfer-${rundate}-${batch_prefix}.txt
+    if [[ -f ${bam} && -f ${bai} ]]; then 
+        echo ""
+        echo "Adding ${bam} and ${bai} to globus transfer: globus-transfer-${rundate}-${batch_prefix}.txt"
+        echo "--no-recursive ${bam} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bam" >> globus-transfer-${rundate}-${batch_prefix}.txt
+        echo "--no-recursive ${bai} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bai" >> globus-transfer-${rundate}-${batch_prefix}.txt
+    else 
+        printf "ERROR: ${bam} or ${bai} does not exist for ${sample}. Check path is correct or if BAM has already been transfered to ketu.\n"
+    fi
 
     ## Transferring a batch of original bams assumes they have all completed re-alignment so we check for the completion of BQSR BAMs.
     if [[ -f ${newbam} && -f ${newbai} ]]; then 
@@ -195,15 +199,15 @@ if [[ -f ${batch} ]] && ([[ -f ${gatk} ]] || [[ -f ${bcftools} ]]); then
             ## Creating an individual VCF for the sample 
             echo ""
             echo "Adding command to vcf_transfer_${batch_prefix}.swarm to generate VCF for sample ${sample} from GATK variant calls: 
-                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${gatk}"
-            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${gatk}" >> vcf_transfer_${batch_prefix}.swarm
+                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${PWD}/{gatk}"
+            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/gatk.${sample}.vcf.gz ${PWD}/${gatk}" >> vcf_transfer_${batch_prefix}.swarm
         fi 
 
         if [ -n ${bcftools} ]; then
             echo ""
             echo "Adding command to vcf_transfer_${batch_prefix}.swarm to generate VCF for sample ${sample} from bcftools variant calls:
-                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${bcftools}"
-            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${bcftools}" >> vcf_transfer_${batch_prefix}.swarm
+                bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${PWD}/${bcftools}"
+            echo "bcftools view -s ${sample} --threads 4 -U -c 1 -Oz --write-index -o /data/Kastner_PFS/WGS/${mod_date}/${sample}/bcftools.${sample}.vcf.gz ${PWD}/${bcftools}" >> vcf_transfer_${batch_prefix}.swarm
         fi
 
     done < ${batch}
