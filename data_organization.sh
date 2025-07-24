@@ -78,10 +78,14 @@ function run_batch() {
         printf "${status}\n"
     fi
 
-    echo ""
-    echo "Adding ${bam} and ${bai} to globus transfer: globus-transfer-${rundate}-${batch_prefix}.txt"
-    echo "--no-recursive ${bam} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bam" >> globus-transfer-${rundate}-${batch_prefix}.txt
-    echo "--no-recursive ${bai} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bai" >> globus-transfer-${rundate}-${batch_prefix}.txt
+    if [[ -f ${bam} && -f ${bai} ]]; then 
+        echo ""
+        echo "Adding ${bam} and ${bai} to globus transfer: globus-transfer-${rundate}-${batch_prefix}.txt"
+        echo "--no-recursive ${bam} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bam" >> globus-transfer-${rundate}-${batch_prefix}.txt
+        echo "--no-recursive ${bai} /mnt/brajukanm/ketu_labs/Kastner/WGS/${mod_date}/${sample}/${sample}.bai" >> globus-transfer-${rundate}-${batch_prefix}.txt
+    else 
+        printf "ERROR: ${bam} or ${bai} does not exist for ${sample}. Check path is correct or if BAM has already been transfered to ketu.\n"
+    fi
 
     ## Transferring a batch of original bams assumes they have all completed re-alignment so we check for the completion of BQSR BAMs.
     if [[ -f ${newbam} && -f ${newbai} ]]; then 
