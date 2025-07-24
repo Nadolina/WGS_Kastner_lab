@@ -6,6 +6,8 @@ import pandas as pd
 import time
 from datetime import date
 from pathlib import Path
+# from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor
 
 ## Parsing gene symbol from command line input 
 p=argparse.ArgumentParser()
@@ -19,149 +21,147 @@ if args.gene:
 logname="".join(['hail-',gene,'-',date.today().strftime('%m%d%y'),'.log'])
 hl.init(spark_conf={'spark.driver.memory': '25g'}, log=logname)
 
-## Loading constraint matrix table from gnomad v4.1
 constraint=hl.read_table('/data/Kastner_PFS/references/gnomad_v4.1/gnomad.v4.1.constraint_metrics.ht')
 constraint=constraint.key_by('gene','gene_id','transcript')
 
-## FUNCTIONS ---------------------
+## FUNCTIONS --------------------------------
 
 def gene_search(db):
 
-    print ("\nInitializing hail and loading matrix tables.\n")
+    print ("\nInitializing hail and loading matrix table %s.\n" % db)
     mt=hl.read_matrix_table(db)
-
-    print ("\nStarting query of % s in % s." % (args.gene,db))
 
     query=mt.filter_rows(mt.info['SYMBOL'].contains(gene))
     if query.rows().count()==0:
         print ('%s not found in %s' % (gene,db))
-        return None
-
-    print ("\nStructure of matrix table:\n")
-    query.describe()
+        return 
+    else:
+        query=query.persist()
 
     dim=query.count()
-    print ("\nNumber of rows matching %s: " % gene, dim[0], "\n")
+    print ("\nNumber of rows matching %s in %s: " % (gene,db), dim[0], "\n")
 
     ## Adding some aggregate statistics from hail's built in variant_qc function 
     query=hl.variant_qc(query)
 
     ## Collecting heterozygous and alt-homozygous samples 
     print ("\nCollecting samples with variants observed in % s" % gene)
-    query=query.annotate_rows(het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
-                         hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
-
+    query=query.annotate_rows(n_het=query.variant_qc['n_het'],
+                        n_hom_alt=query.variant_qc['homozygote_count'][1],
+                        het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
+                        hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
+    
     tb=query.localize_entries()
-
+    query=query.unpersist()
     return (tb)
 
+# Function to safely extract string from single-item list
+def extract_single_string(cell):
+    if isinstance(cell, list) and len(cell) == 1:
+        return str(cell[0])
+    elif isinstance(cell, list) and len(cell) == 0:
+        return None  # or '' if you prefer an empty string
+    return cell  # fallback
 
-def build_df(g_tb,b_tb):
+## QUERY -------------------------------------
 
-    ## Storing table in chache for improved speed 
-    g_tb=g_tb.persist()
-    b_tb=b_tb.persist()
+start=time.time()
 
-    ## adding pLI, LOEUF and mis_z_score from gnomad's pre-built constraint hail table to GATK db - will add to remaining bcftools variants later.
-    ## https://gnomad.broadinstitute.org/help/constraint
-    ## https://gnomad.broadinstitute.org/data#v4-constraint
-    print ("\nAdding pLI, LOEUF and missense z-score annotations from gnomad constraint table to %s." % g_tb)
-    g_tb=g_tb.annotate(gene=g_tb.info['SYMBOL'][0], gene_id=g_tb.info['Gene'][0], transcript=g_tb.info['Feature'][0])
-    g_tb=g_tb.key_by('gene','gene_id','transcript') 
-    ## need to key-by same columns as constraint table for annotation (no locus-allele in constraint)
-    g_tb=g_tb.annotate(pLI=constraint[g_tb.key].lof['pLI'], LOEUF=constraint[g_tb.key].lof.oe_ci.upper, mis_z_score=constraint[g_tb.key].mis.z_score)
+## Querying the GATK variant calls in parallel
+if __name__ == '__main__':
+    databases=['/data/Kastner_PFS/WGS/cohort_db/version_070925/db1.concat.070925.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_070925/db2.concat.070925.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_070925/db3.concat.070925.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_070925/db4.concat.070925.mt']
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        queries=list(executor.map(gene_search,databases))
+    
+    for query in queries:
+        if query is not None:
+            g_tb=query
 
-    ## re-keying our table by locus allele 
-    g_tb=g_tb.key_by('locus','alleles')
-
-    ## Annotating the GATK table to show variants also called by BCFTOOLS
-    g_tb=g_tb.annotate(bcftools_het_samples=b_tb[g_tb.key].het_samples,
-        bcftools_hom_samples=b_tb[g_tb.key].hom_alt_samples,
-        bcftools_DP=b_tb[g_tb.key].info['DP'],
-        bcftools_AF=b_tb[g_tb.key].variant_qc['AF'][1],
-        bcftools_AC=b_tb[g_tb.key].variant_qc['AC'][1],
-        bcftools_AN=b_tb[g_tb.key].variant_qc['AN'])
-
-    ## Initializing dictionary to build output table from 
-    print ("\nBuilding output table.")
-    hail_dict={
-        "locus": g_tb.locus.collect(),
-        "alleles": g_tb.alleles.collect(),
-        "rsid": g_tb.rsid.collect(),
-        "qual": g_tb.qual.collect(),
-        "AN": g_tb.variant_qc['AN'].collect(),
-        "AC" : g_tb.variant_qc['AC'][1].collect(),
-        "AF": g_tb.variant_qc['AF'][1].collect(),
-        "DP": g_tb.info['DP'].collect(),
-        "n_het": g_tb.variant_qc['n_het'].collect(),
-        "n_hom_alt": g_tb.variant_qc['homozygote_count'][1].collect(),
-        "het_samples": g_tb.het_samples.collect(),
-        "hom_alt_samples": g_tb.hom_alt_samples.collect(),
-        "bcftools_het_samples": g_tb.bcftools_het_samples.collect(),
-        "bcftools_hom_alt_samples": g_tb.bcftools_hom_samples.collect(),
-        "bcftools_AN": g_tb.bcftools_AN.collect(),
-        "bcftools_AC": g_tb.bcftools_AC.collect(),
-        "bcftools_AF": g_tb.bcftools_AF.collect(),
-        "bcftools_DP": g_tb.bcftools_DP.collect(),
-        "pLI": g_tb.pLI.collect(),
-        'LOEUF': g_tb.LOEUF.collect(),
-        'mis_z_score': g_tb.mis_z_score.collect()
-        }
+## Querying the bcftools calls in parallel
+if __name__ == '__main__':
+    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db1.concat.071425.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db2.concat.071425.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db3.concat.071425.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db4.concat.071425.mt'
+        ]
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        queries=list(executor.map(gene_search,databases))
+    
+    for query in queries:
+        if query is not None:
+            b_tb=query
 
 
-    ## Can't modify "Number" in info lines describing annotations in VCF in convenient way
-    ## So, hail expects most of these fields to be arrays. This function collects the first (and only) value if the class of the field is Array. 
-    def gettype(name):
-        if "Array" in str(g_tb.info[name].__class__):
-            hail_dict["{0}".format(name)]=g_tb.info[name][0].collect()
-        else:
-            hail_dict["{0}".format(name)]=g_tb.info[name].collect()
+btb_semijoin=b_tb.semi_join(g_tb).flatten().key_by('locus','alleles') ## Shared loci+alleles between gatk and bcftools calls 
+btb_antijoin=b_tb.anti_join(g_tb).flatten().key_by('locus','alleles') ## Loci/alleles seen in bcftools and not GATK 
 
-    ## Applying gettype function to subfields in VCF's INFO field 
-    rowlist=list(g_tb.row.info)
-    list(map(gettype,rowlist))
+# # btb_flat=btb_antijoin.flatten()
 
-    ## Generating a pandas dataframe 
-    return(pd.DataFrame(hail_dict))
+#Renaming bcftools columns to distinguish them when antijoin unioned to gtb 
+btb_antijoin=btb_antijoin.transmute(b_n_hom_alt=btb_antijoin['n_hom_alt'],
+                        b_n_het=btb_antijoin['n_het'],
+                        b_het_samples=btb_antijoin['het_samples'],
+                        b_hom_alt_samples=btb_antijoin['hom_alt_samples'])
 
-    # Removing table from cache
-    g_tb=g_tb.unpersist()
-    b_tb=b_tb.unpersist()
+## For shared loci/alleles, I am just annotating the GATK call rows with bcftools call info
+g_tb=g_tb.annotate(b_het_samples=btb_semijoin[g_tb.key].het_samples,
+        b_hom_alt_samples=btb_semijoin[g_tb.key].hom_alt_samples,
+        b_n_hom_alt=btb_semijoin[g_tb.key]['n_hom_alt'],
+        b_n_het=btb_semijoin[g_tb.key]['n_het'],
+        b_DP=btb_semijoin[g_tb.key]['info.DP'],
+        b_AF=btb_semijoin[g_tb.key]['variant_qc.AF'],
+        b_AC=btb_semijoin[g_tb.key]['variant_qc.AC'],
+        b_AN=btb_semijoin[g_tb.key]['variant_qc.AN'])
+gtb_flat=g_tb.flatten().key_by('locus','alleles')
 
+## Union combines tables that do not have shared keys - so it retains unique locus/allele pairs from GATK and bcftools 
+union_tb=gtb_flat.union(btb_antijoin,unify=True)
 
-## RUNNING QUERY --------------------
+#temporarily re-key the table to add-in constraint information
+union_tb=union_tb.annotate(gene=union_tb['info.SYMBOL'][0], 
+                gene_id=union_tb['info.Gene'][0], 
+                transcript=union_tb['info.Feature'][0])
+union_tb=union_tb.key_by('gene','gene_id','transcript')
+union_tb=union_tb.annotate(pLI=constraint[union_tb.key].lof['pLI'], 
+                LOEUF=constraint[union_tb.key].lof.oe_ci.upper, 
+                mis_z_score=constraint[union_tb.key].mis.z_score)
+union_tb=union_tb.key_by('locus','alleles')
 
-# Tracking query time 
-start=time.time() 
+## Transform to pandas dataframe and re-order columns for output 
+df=union_tb.to_pandas()
+cols=df.columns.tolist()
+for col in cols:
+    df[col] = df[col].apply(extract_single_string)
 
-g_tb_1=gene_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db1.concat.042825.mt')
-b_tb_1=gene_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db1.concat.050125.mt')
+colorder=['locus','alleles','n_het','n_hom_alt','het_samples','hom_alt_samples','b_n_het','b_n_hom_alt',
+            'b_het_samples','b_hom_alt_samples','b_DP','b_AF','b_AC','b_AN','rsid','qual','info.DP',
+            'variant_qc.AF','variant_qc.AN','variant_qc.dp_stats.mean','variant_qc.dp_stats.min',
+            'variant_qc.dp_stats.max','variant_qc.gq_stats.mean','info.gnomADg',
+            'info.gnomADg_AC', 'info.gnomADg_AN','info.gnomADg_nhomalt_joint',
+            'info.gnomADg_AF_joint','info.gnomADg_AF_grpmax','info.gnomADg_AC_XY','info.gnomADg_non_par',
+            'info.gnomADg_sift_max','info.gnomADg_polyphen_max','info.ClinVar',
+            'info.ClinVar_CLNSIG','info.GERP','info.Consequence','info.IMPACT','info.SYMBOL',
+            'info.Gene','info.Feature_type','info.Feature','info.BIOTYPE','info.EXON','info.INTRON',
+            'info.HGVSc','info.HGVSp','info.cDNA_position','info.CDS_position','info.Protein_position',
+            'info.Amino_acids','info.Codons','info.Existing_variation','info.DISTANCE','info.STRAND',
+            'info.FLAGS','info.FLAGS','info.PICK','info.SYMBOL_SOURCE','info.HGNC_ID','info.CANONICAL',
+            'info.SOURCE','info.SOMATIC','info.PHENO','info.CADD_PHRED','info.SpliceAI_pred_DP_AG',
+            'info.SpliceAI_pred_DP_AL','info.SpliceAI_pred_DP_DG','info.SpliceAI_pred_DP_DL',
+            'info.SpliceAI_pred_DS_AG','info.SpliceAI_pred_DS_AL','info.SpliceAI_pred_DS_DG',
+            'info.SpliceAI_pred_DS_DL','info.SpliceAI_pred_SYMBOL','info.MaxEntScan_alt','info.MaxEntScan_diff',
+            'info.MaxEntScan_ref','info.REVEL','info.am_class','info.am_pathogenicity','info.am_protein_variant',
+            'info.am_transcript_id','info.am_uniprot_id','pLI','LOEUF','mis_z_score']
+reorder_df=df[colorder]      
 
-g_tb_2=gene_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db2.concat.042825.mt')
-b_tb_2=gene_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db2.concat.050125.mt')
-
-g_tb_3=gene_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db3.concat.042825.mt')
-b_tb_3=gene_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db3.concat.050125.mt')
-
-g_tb_4=gene_search('/data/Kastner_PFS/WGS/cohort_db/version_042825/db4.concat.042825.mt')
-b_tb_4=gene_search('/data/Kastner_PFS/WGS/cohort_db/bcftools_043025/db4.concat.050125.mt')
-
-if g_tb_1 is not None:
-    db_df=build_df(g_tb_1,b_tb_1)
-elif g_tb_2 is not None:
-    db_df=build_df(g_tb_2,b_tb_2)
-elif g_tb_3 is not None:
-    db_df=build_df(g_tb_3,b_tb_3)
-elif g_tb_4 is not None:
-    db_df=build_df(g_tb_4,b_tb_4)
-
-end=time.time()
-print (f"Time taken to perform query: {end-start} seconds")
-
-# db_all_df=pd.concat([db1_df,db2_df,db3_df,db4_df])
-
-# Using current date and input gene to construct output file name 
 strlist=["hail-",gene,"-",date.today().strftime('%m%d%y'),".tsv"]
 outname="".join(strlist)
 print ("\nOutput query table saved to : %s " % outname)
-db_df.to_csv(outname,sep='\t')
+reorder_df.to_csv(outname, sep='\t')
+
+end=time.time()
+
+print (f"Time taken to perform query: {end-start} seconds")
+
