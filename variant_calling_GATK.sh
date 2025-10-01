@@ -131,7 +131,6 @@ generate_genotypeGVCFs_swarm() {  ##generating another swarm to genotype the bat
             --tmp-dir /lscratch/\${SLURM_JOB_ID} \
             -R $ref \
             -V $chrgvcf \
-            -G StandardAnnotation \
             -G AS_StandardAnnotation \
             --dbsnp $dbsnp \
             -L ${chrnum} \
