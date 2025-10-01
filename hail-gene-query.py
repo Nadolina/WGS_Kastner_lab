@@ -35,8 +35,8 @@ def gene_search(db):
     if query.rows().count()==0:
         print ('%s not found in %s' % (gene,db))
         return 
-    else:
-        query=query.persist()
+    # else:
+    #     query=query.persist()
 
     dim=query.count()
     print ("\nNumber of rows matching %s in %s: " % (gene,db), dim[0], "\n")
@@ -52,7 +52,7 @@ def gene_search(db):
                         hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
     
     tb=query.localize_entries()
-    query=query.unpersist()
+    # query=query.unpersist()
     return (tb)
 
 # Function to safely extract string from single-item list
@@ -69,10 +69,10 @@ start=time.time()
 
 ## Querying the GATK variant calls in parallel
 if __name__ == '__main__':
-    databases=['/data/Kastner_PFS/WGS/cohort_db/version_070925/db1.concat.070925.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_070925/db2.concat.070925.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_070925/db3.concat.070925.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_070925/db4.concat.070925.mt']
+    databases=['/data/Kastner_PFS/WGS/cohort_db/version_091725/db1.gatk.091725.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_091725/db2.gatk.091725.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_091725/db3.gatk.091725.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_091725/db4.gatk.091725.mt']
     with ThreadPoolExecutor(max_workers=4) as executor:
         queries=list(executor.map(gene_search,databases))
     
@@ -82,10 +82,10 @@ if __name__ == '__main__':
 
 ## Querying the bcftools calls in parallel
 if __name__ == '__main__':
-    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db1.concat.071425.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db2.concat.071425.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db3.concat.071425.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_071425/db4.concat.071425.mt'
+    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db1.bcftools.091725.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db2.bcftools.091725.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db3.bcftools.091725.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db4.bcftools.091725.mt'
         ]
     with ThreadPoolExecutor(max_workers=4) as executor:
         queries=list(executor.map(gene_search,databases))

@@ -81,11 +81,17 @@ def format_query(q, db, samples, outdir):
     print (f"Writing output to {ht_out}...")
     q.write(ht_out, overwrite=True)
 
-def sample_search_nontrio(db, samples):
+def sample_search_nontrio(db, samples, locus=None):
     try:
         print ("Incomplete trio identified, performing query without inheritance analysis...") 
 
         mt = hl.read_matrix_table(db)
+
+        # Filter to specific locus if provided
+        if locus is not None:
+            print(f"Filtering to locus: {locus}")
+            interval = hl.parse_locus_interval(f"{locus}", reference_genome="GRCh38")
+            mt = mt.filter_rows(interval.contains(mt.locus))
 
         pedtsv=pd.read_csv(args.pedigree, delim_whitespace=True, header=None)
         probands = [str(pro) for pro in pedtsv.loc[pedtsv[5] == 2, 1].tolist()]
@@ -105,15 +111,22 @@ def sample_search_nontrio(db, samples):
         traceback.print_exc()
 
 
-def sample_search_trio(db, samples):
+def sample_search_trio(db, samples, locus=None):
     try: 
         print ("Complete trio identified, performing query with inheritance analysis...")
 
         mt = hl.read_matrix_table(db)
+
         ped= hl.Pedigree.read(args.pedigree) 
         fam=hl.import_fam(args.pedigree)
         pedtsv = pd.read_csv(args.pedigree, delim_whitespace=True, header=None) ## Reading in as a tsv so I can use the affection status
         affected_samples = set(pedtsv.loc[pedtsv[5] == 2, 1].astype(str))
+
+        # Filter to specific locus if provided
+        if locus is not None:
+            print(f"Filtering to locus: {locus}")
+            interval = hl.parse_locus_interval(f"{locus}", reference_genome="GRCh38")
+            mt = mt.filter_rows(interval.contains(mt.locus))
         
         probands = [trio.s for trio in ped.complete_trios() if trio.s is not None and str(trio.s) in affected_samples]
 
@@ -126,15 +139,15 @@ def sample_search_trio(db, samples):
             query_trio = hl.trio_matrix(query,ped,complete_trios=True)
 
             print ("\nAnnotating variants with inheritance patterns in probands...")
-            trio_annotations = [
+            trio_annots = [
                 hl.struct(
                     proband=t.s,
                     father=t.pat_id,
                     mother=t.mat_id,
                     denovo=(
                         (hl.agg.count_where((query.s == t.s) & query.GT.is_non_ref()) > 0)
-                        & (hl.agg.count_where((query.s == t.pat_id) & query.GT.is_non_ref()) == 0)
-                        & (hl.agg.count_where((query.s == t.mat_id) & query.GT.is_non_ref()) == 0)
+                        & (hl.agg.count_where((query.s == t.pat_id) & query.GT.is_hom_ref()) == 0)
+                        & (hl.agg.count_where((query.s == t.mat_id) & query.GT.is_hom_ref()) == 0)
                     ),
                     ar_inherited=(
                         (hl.agg.count_where((query.s == t.s) & query.GT.is_hom_var()) > 0)
@@ -213,6 +226,7 @@ if __name__ == '__main__':
     p.add_argument("--db", required=True)
     p.add_argument("--samples", nargs='+', required=True)
     p.add_argument("--pedigree", required=False)
+    p.add_argument("--locus", required=False)
     p.add_argument("--outdir", required=True)
     args = p.parse_args()
 
@@ -230,8 +244,7 @@ if __name__ == '__main__':
         trios=ped.complete_trios()
 
         if len(trios)==0:
-            sample_search_nontrio(args.db, args.samples)
+            sample_search_nontrio(args.db, args.samples, args.locus)
         else:
-            sample_search_trio(args.db, args.samples)    
+            sample_search_trio(args.db, args.samples, args.locus)
 
-    
