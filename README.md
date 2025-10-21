@@ -299,9 +299,9 @@ sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
 
 Hail is a database software designed specifically for managing genomic data, because standard dataframe options like SQL are not as sophisticated for this work (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a multi-sample VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
 
-Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the query, and also perform some reformating for easier filtering when the output TSV is view in excel. 
+Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database because it allows the query to be parallelized. 
 
-Batch VCFs need to be modified before building these four hail databases. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools.sh. These are a little redundant, and will be consolidated at some point, per my laundry list. I only wrote them separately because the naming scheme for bcftools files and bcftools annotations are different from GATK. The scripts:
+Batch VCFs need to be modified before building these four hail databases. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools.sh. These are a little redundant, and will be consolidated at some point, per my laundry list. Bcftools and GATK variants are stored in separate hail databases because they have discongruant annotations. When performing queries with either submit-sample-query.sh or hail-gene-query.py, variants from both callers are consolidated in the outputs. The scripts:
 1. accept a list of folders containing batch annotated VCF files
 2. merge chromosomes across batches annotated VCFs (i.e./ 1 with 1, 2 with 2, etc.)
 3. convert consequence blocks into a Hail compatible format (bcftools csq-split pluggin)
@@ -317,10 +317,10 @@ The script will submit three series of swarm commands, one to perform any necess
     ...
     chrN.split.vcf.gz
     chrN.split.vcf.gz.csi 
-    db1.concat.[rundate].vcf.gz
-    db2.concat.[rundate].vcf.gz
-    db3.concat.[rundate].vcf.gz
-    db4.concat.[rundate].vcf.gz 
+    db1.*.[rundate].vcf.gz
+    db2.*.[rundate].vcf.gz
+    db3.*.[rundate].vcf.gz
+    db4.*.[rundate].vcf.gz 
 
 ```
 sbatch [OPTIONS] build_hail_2.sh [batch annotation folder 1] [batch annotation folder 2] ... [batch annotation folder n]
@@ -338,14 +338,13 @@ You can pass as many folders of annotated VCFs as you'd like.
 ```
 
 __NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the four hail databases are constructed. To construct the Hail databases, you must: 
-1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_031925 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
-2. Move the VCFs to your new directory.
+1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_091725 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
+2. Move the VCFs to your new directory from buildhail_*.
 3. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
 
 ```
-bcftools merge -m none -Oz -o [merged VCF] db1.concat.031725.vcf.gz db1.concat.[rundate].vcf.gz
-bcftools merge -m none -Oz -o [newname] db2.concat.031725.vcf.gz db2.concat.[rundate].vcf.gz
-etc.
+bcftools merge -m none -Oz -o db1.gatk.[DATE].vcf.gz [previous version db1 vcf] [new db1 vcf]
+bcftools merge -m none -Oz -o db1.gatk.[RUNDATE].vcf.gz db1.gatk.091725.vcf.gz  db1.concat.[rundate].vcf.gz
 ```
   
 4. Start an sinteractive session and allocation at least 40g of memory and 16 cores.
@@ -382,9 +381,9 @@ At this point you should have eight matrix tables (between GATK and bcftools) re
 
 ### Module 7: Querying the Hail database 
 
-Hail has extensive functionality for querying matrix tables containing genomic data. I have coded two python programs for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). The programs are hail-gene-query.py and hail-sample-query.py, which are located in /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_Lab. I also recommend consulting their forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
+Hail has extensive functionality for querying matrix tables containing genomic data. I have coded two programs for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). The programs are hail-gene-query.py and submit-sample-query.py, which are located in /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_Lab. I also recommend consulting Hail's forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
 
-Hail-gene-query.py will collect any variants in the gene of interest, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. 
+Hail-gene-query.py will collect any variants in the gene a user passes, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. 
 
 The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. This adds the same annotations, and will again aggregate across samples at each variant site to list the heterozygous and alt-homozygous samples called by GATK and/or bcftools. This will of course be limited to just the samples you pass. You can pass multiple samples to the program as a space-delimited list. Since the script will go through each sub-database, as opposed to just one for a specific gene, this program does take a bit more time. 
 
