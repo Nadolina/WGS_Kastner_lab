@@ -69,6 +69,7 @@ done
 OUTDIR+="out"
 echo "Results will be written to ${OUTDIR}"
 
+module load hail
 
 rundate=`date +'%m%d%y'`
 mkdir -p ${OUTDIR} ${OUTDIR}/sample_query_${rundate}_logs 
