@@ -381,23 +381,13 @@ At this point you should have eight matrix tables (between GATK and bcftools) re
 
 ### Module 7: Querying the Hail database 
 
-Hail has extensive functionality for querying matrix tables containing genomic data. I have coded two programs for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). The programs are hail-gene-query.py and submit-sample-query.py, which are located in /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_Lab. I also recommend consulting Hail's forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
+<br />
 
-Hail-gene-query.py will collect any variants in the gene a user passes, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. 
+<div align="center">
+  <img width="3162" height="980" alt="Decision Tree Team Whiteboard in Burgundy Peach Simple Colorful Style (5)" src="https://github.com/user-attachments/assets/2f7608a8-9d85-4718-99a8-71f10a5f707c" />
+</div>
 
-The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. This adds the same annotations, and will again aggregate across samples at each variant site to list the heterozygous and alt-homozygous samples called by GATK and/or bcftools. This will of course be limited to just the samples you pass. You can pass multiple samples to the program as a space-delimited list. Since the script will go through each sub-database, as opposed to just one for a specific gene, this program does take a bit more time. 
-
-I wanted to implement a way to further filter the hail-sample-query.py outputs. So, I coded an additional parameter -n (--n_non_ref), which allows the user to tell the program to only retain variants where the sum of non-reference genoetypes between the prescribed samples is equal to or greater than a given number. For example, if you have a trio, with a known effected parent and patient, you could pass -n 2, so that you only look at sites where at least two of the three samples contain alternate genotypes. You need to pass a minimum of -n 1. 
-
-```
-module load hail
-
-python3-hail hail-gene-query.py -g [GENE SYMBOL, i.e/MEFV]
-
-python3-hail hail-samply-query.py -s [SAMPLE ID 1] [SAMPLE ID 2] ... [SAMPLE ID N] -n [number of non-ref genotypes]
-ex.  python3-hail hail-samply-query.py -s 1122 1123 1124 -n 2
-
-```
+<br />
 
 </details>
 
