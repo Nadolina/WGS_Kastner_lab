@@ -9,66 +9,38 @@ Help()
 	# Display help 
 	echo "To automate the processes cleaning up a bwa-mem2 alignment to HG38 prior to performing variant calling. This script assumes the bam has already undergone MergeBamAlignments."
 	echo ""
-	echo "To run this pipeline use the following command:"
-	echo ""
-	echo "		sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=[] alignment_cleanup.sh [arguments]"
-	echo ""
-	echo "	You must supply just one of -b, -o or -l. The multiple input options are designed to provide some flexiblity to the location of a bam file."
-	echo "	-b merged bam alignment"
-	echo " 	-l locations; instead of directly providing the merged bam, you can provide the batch list containing one sample ID on each line, corresponding to that sample's folder name."
-	echo "	   This option will then be looking for "/[sample_ID]/[sample ID]_out/[sample ID].mergedaln.bam", and will move into [sample ID]_out, so if your directories do not comply with that structure, use -b instead."
-	echo "	-o path to orig bam; this is based on the assumption that in the first step (pre-process-pipe.sh) the user looped through a list of paths to original bams located in a directory other than the working directory."
-	echo "	   This option will then parse that path name to find the presumed working directory name for a given sample and identify the merged bam; i.e. /[sample_ID]/[sample ID]_out/[sample ID].mergedaln.bam." 
-	echo "	-r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)"
-	echo "	-h help"
-	echo "" 
-	echo "You can loop through a batch to pass locations or BAMs to -l and -o in the same way as pre-process-pipe.sh. The -b is mostly for passing a single BAM."
-	echo ""
-	echo "For WGS, I recommend providing at least --mem=96g and --cpus-per-task=24, gres=lscratch:400 and --time=1-06:00:00, assuming a bam of around 60GB."
+	echo "Run cleanup via the submissions script submit-alignment-cleanup.sh."
 
 }
 
 restart='true'
-while getopts "b:o:l:rh" option; do
+while getopts "b:h" option; do
    case $option in
-	b) mbam=$OPTARG ;;
-	o) origbam=$OPTARG ;;
-	l) location=$OPTARG ;;
-	r) restart='false' ;;
+	b) bam=$OPTARG ;;
 	h) # display Help
          Help
          exit;;
    esac
 done
 
-if [ -z "$location" ] && [ -z "$origbam" ]
-then
-	sample=`basename $mbam | cut -f1 -d'.'`
-	printf "Working directory: ${PWD}\n"
-	printf "Merged alignment bam: $mbam\n"
-elif [ -z "$mbam" ] && [ -z "$location" ]
-then
-	sample=`basename $origbam | cut -f1 -d'.'`
-	printf "\nDirectory for sample: ${sample}\n"
-	printf "No location or merged bam provided, original bam provided: $origbam\n"
-	cd ${sample}/${sample}_out/
-	printf "\nWorking directory: ${PWD}\n"
-	mbam=${sample}.mergedaln.bam
-	printf "Merged alignment bam under the name: ${mbam}\n\n"
+if [[ -z "${bam}" ]]; then
+	echo "No bam provided, please provide one using -b"
+	exit 1
 else
-	sample=$(echo $location)
-	printf "The location of the working directory was provided as: $location. Moving into ${location}/${location}_out to perform alignment post-processing.\n"
-	cd $location/"${location}_out"
-	mbam=`ls $location.mergedaln.bam`
-	printf "Merged alignment bam under the name: ${mbam}\n"
-fi 
+	sample=$(basename ${bam} | sed 's/.bam//g')
+	OUTDIR="$PWD/${sample}/${sample}_out"
+	LOGS="$PWD/${sample}/logs"
+	mbam="${OUTDIR}/${sample}.fullmerged.bam"
+
+	echo "Merged alignment bam: ${mbam}"
+	echo "Output directory: ${OUTDIR}"
+fi
 
 module load GATK/4.6.0.0 || fail "Could not load GATK"
+module load samtools/1.19 || fail "Could not load samtools"
 
 if [[ ! -d /lscratch/${SLURM_JOBID} ]]; then mkdir -p /lscratch/${SLURM_JOBID}; fi
-
-markdupssam=`echo $mbam | sed -E 's/mergedaln.sam|mergedaln.bam|merged.bam|merged.sam/markdups_sort.bam/g'`
-
+rundate=$(date +%Y%m%d)
 
 ##The sets of known variants are required for the BQSR modeling. 
 knownindels=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.known_indels.vcf.gz
@@ -78,50 +50,115 @@ ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 
 set -x
 
-if ${restart}  ##Mark duplicates takes a long time, this modularizes it a bit in the event something happens with the model but the mark duplicates bam was created just fine. 
-then
-	gatk MarkDuplicatesSpark --java-options "-Xms60G -Xmx60G" \
+gatk MarkDuplicatesSpark --java-options "-Xms60G -Xmx60G" \
 	-I ${mbam} \
-	-O $markdupssam \
-	-M markdup_metrics.txt \
+	-O ${OUTDIR}/${sample}.marked_dups.bam \
+	-M ${OUTDIR}/markdup_metrics.txt \
 	--create-output-bam-index true \
 	--remove-all-duplicates true \
-	--spark-master local[12] 2> err.${SLURM_JOB_ID}.txt
-else
-	continue 
-fi 
+	--tmp-dir /lscratch/${SLURM_JOB_ID} \
+	--spark-master local[12] 2> ${LOGS}/markdups_${rundate}.err
 
-gatk BaseRecalibrator --java-options "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
-	-R $ref \
-	-I $markdupssam \
-	-O ${sample}_bqsr_1.table \
-	--known-sites $knownindels \
-	--known-sites $knownsnps \
-	--known-sites $millsgold \
-	--tmp-dir /lscratch/${SLURM_JOB_ID} > log-bqsr-${SLURM_JOB_ID}.txt 2>&1
+>${OUTDIR}/${sample}.alt_contigs.list
+samtools view -H ${mbam} |\
+	grep -e chrM -e alt -e random -e decoy -e HLA -e Un -e EBV |\
+	awk '{print $2}' |\
+	sed 's/SN://g' >> ${OUTDIR}/${sample}.alt_contigs.list
 
-gatk ApplyBQSR --java-options "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
-	-bqsr ${sample}_bqsr_1.table \
-	-I $markdupssam \
-	-O ${sample}_bqsr_1.bam \
-	--tmp-dir /lscratch/${SLURM_JOB_ID} > log-ApplyBQSR-${SLURM_JOB_ID}.txt
+echo "#SWARM -g 16 -t 4 --gres=lscratch:100 --time=4:00:00 --module GATK/4.6.0.0 --logdir ${LOGS}" > ${OUTDIR}/bqsr_1.${rundate}.swarm
+echo "#SWARM -g 6 --gres=lscratch:50 --module GATK/4.6.0.0 --logdir ${LOGS}" > ${OUTDIR}/applyBQSR.${rundate}.swarm
+echo "#SWARM -g 16 --gres=lscratch:100 --time=4:00:00 --module GATK/4.6.0.0 --logdir ${LOGS}" > ${OUTDIR}/bqsr_2.${rundate}.swarm
 
-gatk BaseRecalibrator --java-options "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
-	-R $ref \
-	-I ${sample}_bqsr_1.bam \
-	-O ${sample}_bqsr_2.table \
-	--known-sites $knownindels \
-	--known-sites $knownsnps \
-	--known-sites $millsgold \
-	--tmp-dir /lscratch/${SLURM_JOB_ID} > log-bqsr-2-${SLURM_JOB_ID}.txt 2>&1 
+## For looping through chromosomes for parallel BQSR.
+chrs=$(echo $(seq 1 1 22) X Y)
 
-# Generating some QC plots so we can see how BQSR improves the quality scoring. 
-gatk AnalyzeCovariates --java-options "-Xms12G -Xmx12G -XX:ParallelGCThreads=4" \
-	-before ${sample}_bqsr_1.table \
-	-after ${sample}_bqsr_2.table \
-	-plots AnalyzeCovariates.pdf 2>&1 
+for chr in ${chrs}; do 
 
-rm "${markdupssam}" ##removing the intermediate mark duplicates bam 
+	## Generating a swarm file to run BQSR in parallel per chromosome. 
+	echo "gatk BaseRecalibrator --java-options '-Xms12G -Xmx12G' \
+		-R ${ref} \
+		-I ${OUTDIR}/${sample}.marked_dups.bam \
+		-O ${OUTDIR}/chr${chr}.${sample}_bqsr_1.table \
+		--intervals chr${chr} \
+		--known-sites ${knownindels} \
+		--known-sites ${knownsnps} \
+		--known-sites ${millsgold} \
+		--tmp-dir /lscratch/\${SLURM_JOB_ID}" >> ${OUTDIR}/bqsr_1.${rundate}.swarm
+
+	echo "gatk ApplyBQSR --java-options '-Xms4G -Xmx4G' \
+		-bqsr ${OUTDIR}/${sample}_combined_bqsr_1.table \
+		-I ${OUTDIR}/${sample}.marked_dups.bam \
+		-O ${OUTDIR}/chr${chr}.${sample}_bqsr_1.bam \
+		--intervals chr${chr} \
+		--tmp-dir /lscratch/\${SLURM_JOB_ID}" >> ${OUTDIR}/applyBQSR.${rundate}.swarm
+
+	echo "gatk BaseRecalibrator --java-options '-Xms12G -Xmx12G' \
+		-R $ref \
+		-I ${OUTDIR}/chr${chr}.${sample}_bqsr_1.bam \
+		-O ${OUTDIR}/chr${chr}.${sample}_bqsr_2.table \
+		-L "chr${chr}" \
+		--known-sites $knownindels \
+		--known-sites $knownsnps \
+		--known-sites $millsgold \
+		--tmp-dir /lscratch/\${SLURM_JOB_ID} ;\
+		gatk AnalyzeCovariates --java-options '-Xmx4G' \
+		-before ${OUTDIR}/chr${chr}.${sample}_bqsr_1.table \
+		-after ${OUTDIR}/chr${chr}.${sample}_bqsr_2.table \
+		-plots ${OUTDIR}/chr${chr}_AnalyzeCovariates.pdf" >> ${OUTDIR}/bqsr_2.${rundate}.swarm
+
+done
+
+echo "gatk BaseRecalibrator --java-options '-Xms12G -Xmx12G' \
+		-R ${ref} \
+		-I ${OUTDIR}/${sample}.marked_dups.bam \
+		-O ${OUTDIR}/${sample}.alt_contigs.bqsr_1.table \
+		-L ${OUTDIR}/${sample}.alt_contigs.list \
+		--known-sites ${knownindels} \
+		--known-sites ${knownsnps} \
+		--known-sites ${millsgold} \
+		--tmp-dir /lscratch/\${SLURM_JOB_ID}" >> ${OUTDIR}/bqsr_1.${rundate}.swarm
+
+echo "gatk ApplyBQSR --java-options '-Xms4G -Xmx4G' \
+		-bqsr ${OUTDIR}/${sample}_combined_bqsr_1.table \
+		-I ${OUTDIR}/${sample}.marked_dups.bam \
+		-L ${OUTDIR}/${sample}.alt_contigs.list \
+		-O ${OUTDIR}/${sample}.alt_contigs.bqsr_1.bam \
+		--tmp-dir /lscratch/\${SLURM_JOB_ID}" >> ${OUTDIR}/applyBQSR.${rundate}.swarm
+
+## Initating swarm jobs with dependencies -------
+
+bqsr_1_jid=$(swarm ${OUTDIR}/bqsr_1.${rundate}.swarm)
+
+## Generating combined BQSR table from contig-scattered tables for use in ApplyBQSR step.
+BQSRTABLES=""
+for chr in ${chrs}; do 
+	BQSRTABLES+="-I ${OUTDIR}/chr${chr}.${sample}_bqsr_1.table "
+done
+BQSRTABLES+="-I ${OUTDIR}/${sample}.alt_contigs.bqsr_1.table"
+gather_jid=$(sbatch --mem=10g --gres=lscratch:100 --time=4:00:00 --dependency afterok:${bqsr_1_jid} \
+	--wrap="module load GATK/4.6.0.0 ; gatk GatherBQSRReports ${BQSRTABLES} \
+		-O ${OUTDIR}/${sample}_combined_bqsr_1.table \
+		2> ${LOGS}/gatherBQSRReports_${rundate}.err")
+
+applyBQSR_jid=$(swarm --dependency afterok:${gather_jid} ${OUTDIR}/applyBQSR.${rundate}.swarm)
+bqsr_2_jid=$(swarm --dependency afterok:${applyBQSR_jid} ${OUTDIR}/bqsr_2.${rundate}.swarm)
+
+BAMs=""
+for chr in ${chrs}; do 
+	BAMs+="${OUTDIR}/chr${chr}.${sample}_bqsr_1.bam "
+done
+
+merge_jid=$(sbatch --mem=16g -c 4 --gres=lscratch:100 --time=4:00:00 --dependency afterok:${bqsr_2_jid} \
+	--wrap="module load samtools ; samtools merge -f -@4 -o ${OUTDIR}/${sample}_bqsr_1.bam --write-index ${BAMs}")
+
+## Removing intermediaries -------
+
+intermediates1=$(ls ${OUTDIR}/*.mergedaln.bam ${OUTDIR}/*mergedaln.bai ${OUTDIR}/*.marked_dups.bam)
+intermediates2=$(for CHR in $(echo $(seq 1 1 22) X Y); do ls -ltrh ${OUTDIR}/chr${CHR}.${sample}_bqsr_1.ba* ; done)
+
+sbatch --dependency afterok:${merge_jid} \
+	--wrap="echo 'Final BQSR BAM merged finished successfully; deleting intermediate files' && rm -f ${intermediates1} ${intermediates2}"
+
 set +x
 
 

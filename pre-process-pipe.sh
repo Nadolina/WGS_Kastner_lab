@@ -62,22 +62,6 @@ RGlist=$(samtools view -H ${alnbam} | grep '^@RG' | awk -F'\t' '{for (i=1; i<=NF
 
 revert() { ## Converts the original aligned bam to an unaligned bam
 
-	# Check if all reverted BAMs already exist and are non-zero size, exiting if yes
-	all_exist=true
-    for ID in ${RGlist}; do
-        if [ ! -s "${OUTDIR}/${ID}.bam" ]; then
-            all_exist=false
-            break
-        fi
-    done
-    
-    if [ "${all_exist}" = true ]; then
-        echo "All reverted BAMs already exist and are non-zero size. Skipping revert step."
-        return 0
-	else 
-		echo "Reverted BAMs not found or zero size. Proceeding with revert step."
-    fi
-
 	##ATTRIBUTES_TO_CLEAR are annotations in an aligned bam that are not compatible with an unaligned bam/future alignment and must be removed 
 	##Outputting a per-read-group bam to enable parallelization of the next steps.
 	java -Xmx16G -jar $PICARDJAR RevertSam \
@@ -93,8 +77,8 @@ revert() { ## Converts the original aligned bam to an unaligned bam
      		ATTRIBUTE_TO_CLEAR=OC \
      		ATTRIBUTE_TO_CLEAR=OP \
      		ATTRIBUTE_TO_CLEAR=sd \
-     		TMP_DIR=/lscratch/\${SLURM_JOB_ID} \
-     		> ${LOGS}/log-RevertSam-${prefix}-\${SLURM_JOB_ID}.txt 2>&1
+     		TMP_DIR=/lscratch/${SLURM_JOB_ID} \
+     		> ${LOGS}/log-RevertSam-${prefix}-${SLURM_JOB_ID}.txt 2>&1
 
 }
 
@@ -135,8 +119,8 @@ mkAdapters_jid=$(swarm ${OUTDIR}/swarm-mkAdapter-aln.txt)
 
 echo "Creating swarm file for sorting aligned and reverted bams..."
 echo "Creating swarm file for merging BAM alignments..."
-echo "#SWARM -g 8 --gres=lscratch:50 --module GATK/4.6.0.0 --time=8:00:00 --logdir ${LOGS}" > ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm
-echo "#SWARM -g 24 -t 4 --gres=lscratch:100 --module GATK/4.6.0.0 --time=12:00:00 --logdir ${LOGS}" > ${OUTDIR}/mergebamaln-${prefix}-${SLURM_JOB_ID}.swarm
+echo "#SWARM -g 10 --gres=lscratch:200 --module GATK/4.6.0.0 --time=8:00:00 --logdir ${LOGS}" > ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm
+echo "#SWARM -g 24 -t 4 --gres=lscratch:300 --module GATK/4.6.0.0 --time=12:00:00 --logdir ${LOGS}" > ${OUTDIR}/mergebamaln-${prefix}-${SLURM_JOB_ID}.swarm
 
 for ID in ${RGlist}; do
 
@@ -145,14 +129,16 @@ for ID in ${RGlist}; do
             -I ${OUTDIR}/${ID}.aln.bam \
             -O ${OUTDIR}/${ID}.aln.sort.bam \
             --SORT_ORDER queryname \
-            --TMP_DIR /lscratch/\${SLURM_JOB_ID}" >> ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm
+            --TMP_DIR /lscratch/\${SLURM_JOB_ID}" \
+			2> ${LOGS}/log-sort-alnbam-${ID}-\${SLURM_JOB_ID}.txt >> ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm
     echo "gatk --java-options '-Xmx8G' SortSam \
             -I ${OUTDIR}/${ID}.bam \
             -O ${OUTDIR}/${ID}.sort.bam \
             --SORT_ORDER queryname \
-            --TMP_DIR /lscratch/\${SLURM_JOB_ID}" >> ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm
+            --TMP_DIR /lscratch/\${SLURM_JOB_ID}" \
+			2> ${LOGS}/log-sort-bam-${ID}-\${SLURM_JOB_ID}.txt >> ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm
 
-	echo "gatk --java-options '-Xmx8G' MergeBamAlignment \
+	echo "gatk --java-options '-Xmx20G' MergeBamAlignment \
 		R=$ref \
 		UNMAPPED_BAM=${OUTDIR}/${ID}.bam \
 		O=${OUTDIR}/${ID}.mergedaln.bam \
@@ -174,11 +160,28 @@ done
 sort_jid=$(swarm --dependency afterok:${mkAdapters_jid} ${OUTDIR}/sort-${prefix}-${SLURM_JOB_ID}.swarm)
 merge_jid=$(swarm --dependency afterok:${sort_jid} ${OUTDIR}/mergebamaln-${prefix}-${SLURM_JOB_ID}.swarm)
 
+revertbams=""
+alnbams=""
+sortbams=""
+sortalnbams=""
 mbams=""
-for ID in $(RGlist); do 
+for ID in ${RGlist}; do 
 	mbams+="${OUTDIR}/${ID}.mergedaln.bam "
+	revertbams+="${OUTDIR}/${ID}.bam "
+	alnbams+="${OUTDIR}/${ID}.aln.bam "
+	sortbams+="${OUTDIR}/${ID}.sort.bam "
+	sortalnbams+="${OUTDIR}/${ID}.aln.sort.bam "
 done ## Listing reverted per-read-group bams. 
 
-sbatch --mem=16g -c 4 --gres=lscratch:100 --time=4:00:00 --dependency afterok:${merge_jid} --wrap="module load samtools ; samtools merge -f -@4 -o ${OUTDIR}/${prefix}.fullmerged.bam ${mbams}"
+fullmerged_jid=$(sbatch --mem=16g \
+	-c 4 \
+	--gres=lscratch:300 \
+	--time=4:00:00 \
+	--dependency afterok:${merge_jid} \
+	--wrap="module load samtools ; samtools merge -f -@4 -o ${OUTDIR}/${prefix}.fullmerged.bam --write-index ${mbams}")
+
+## removing intermediate files if the samtools merge is successful
+sbatch --dependency afterok:${fullmerged_jid} --wrap="rm ${revertbams} ${sortbams} ${sortalnbams} ${alnbams}"
+
 
 set +x
