@@ -340,7 +340,17 @@ You can pass as many folders of annotated VCFs as you'd like.
 __NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the four hail databases are constructed. To construct the Hail databases, you must: 
 1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_091725 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
 2. Move the VCFs to your new directory from buildhail_*.
-3. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
+3. You need to combine the new *concat VCFs with the combined VCFs from the previous update. I use bcftools merge, but this will send you an error if there are duplicate samples. There may be duplicate runs on a given sample if say, a new family member was sequenced, and we wanted to variant call them together. Start by identifying duplicate samples with something like:
+
+```
+bcftools query -l [NEW DB1] > samples.txt
+bcftools query -l [OLD COMBINED DB1] >> samples.txt
+sort samples.txt | uniq -cd
+(or some variation of this)
+```
+4. Then, remove the samples from the OLD VCF. 
+   
+6. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
 
 ```
 bcftools merge -m none -Oz -o db1.gatk.[DATE].vcf.gz [previous version db1 vcf] [new db1 vcf]
