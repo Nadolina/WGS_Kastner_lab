@@ -26,8 +26,8 @@ def query_pair_combine(g_ht_path,b_ht_path,outdir):
         b_ht_prefix=os.path.basename(b_ht_path).replace('.ht','')
 
         ## key tables
-        g_ht=g_ht.key_by('locus','alleles')
-        b_ht=b_ht.key_by('locus','alleles')
+        g_ht=g_ht.key_by('locus','alleles','het_samples','hom_alt_samples')
+        b_ht=b_ht.key_by('locus','alleles','het_samples','hom_alt_samples')
 
         ## Identify shared variants between GATK and bcftools calls using locus-allele keys 
         b_semijoin = b_ht.semi_join(g_ht)
@@ -43,7 +43,7 @@ def query_pair_combine(g_ht_path,b_ht_path,outdir):
                 "False"
             )
         )
-        g_ht_drop = g_ht_drop.key_by('locus','alleles').checkpoint(f"{outdir}/{g_ht_prefix}_drop.ht", overwrite=True)
+        g_ht_drop = g_ht_drop.key_by('locus','alleles','het_samples','hom_alt_samples').checkpoint(f"{outdir}/{g_ht_prefix}_drop.ht", overwrite=True)
         
         b_antijoin_drop=b_antijoin.drop('info.INDEL','info.IMF','info.SGB','info.REF_AN','info.REF_AC','info.AC','info.AN','info.DP4','info.MQ')
         b_antijoin_drop = b_antijoin_drop.annotate(bcftools_only="True").checkpoint(f"{outdir}/{b_ht_prefix}_antijoin_drop.ht", overwrite=True)

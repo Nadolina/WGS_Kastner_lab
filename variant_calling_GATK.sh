@@ -63,7 +63,7 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
     inbam=$1 
     id=$2 
 
-    echo "#SWARM -t 4 -g 20 --time=24:00:00" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
+    echo "#SWARM -t 4 -g 20 --time=24:00:00 --logdir HC-${rundate}-logs" > HC-${rundate}-${id}.swarm ## Initating a swarm file 
 
     for value in "${chrlist[@]}" ## Looping through a list of chromosome names to generate lines for a swarm script that will run haplotype caller on each chromosome in parallel.
     do 

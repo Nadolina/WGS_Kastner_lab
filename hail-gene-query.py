@@ -69,10 +69,10 @@ start=time.time()
 
 ## Querying the GATK variant calls in parallel
 if __name__ == '__main__':
-    databases=['/data/Kastner_PFS/WGS/cohort_db/version_091725/db1.gatk.091725.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_091725/db2.gatk.091725.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_091725/db3.gatk.091725.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_091725/db4.gatk.091725.mt']
+    databases=['/data/Kastner_PFS/WGS/cohort_db/version_120225/db1.gatk.120225.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_120225/db2.gatk.120225.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_120225/db3.gatk.120225.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_120225/db4.gatk.120225.mt']
     with ThreadPoolExecutor(max_workers=4) as executor:
         queries=list(executor.map(gene_search,databases))
     
@@ -82,10 +82,10 @@ if __name__ == '__main__':
 
 ## Querying the bcftools calls in parallel
 if __name__ == '__main__':
-    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db1.bcftools.091725.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db2.bcftools.091725.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db3.bcftools.091725.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_091725/db4.bcftools.091725.mt'
+    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db1.bcftools.120225.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db2.bcftools.120225.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db3.bcftools.120225.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db4.bcftools.120225.mt'
         ]
     with ThreadPoolExecutor(max_workers=4) as executor:
         queries=list(executor.map(gene_search,databases))
