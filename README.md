@@ -114,40 +114,25 @@ Click on the drop down arrows to view a module.
 
 ### Module 1: Re-alignment 
 
-The process of extracting reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipe the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
+Re-alignment generally adheres to GATK best-practices guidelines (1,2,3,4). You pass your single original BAM or batch file of BAMs (as describe in **Inputs**) to submit-pre-process-pipe.sh. This will then either submit an sbatch job for running pre-process-pipe on your single BAM or generate a swarm (5) of pre-process-pipe.sh jobs. A swarm just deploys multiple similar jobs in parallel; in this case the same program with different input BAMs. 
 
-Samtools stats is run on both the original and final bam. Fastqc is run on the reverted bam to look at the quality of the sequence reads. 
+Pre-process-pipe.sh starts by using RevertSam to extract reads from the GRCh37 aligned bam, and removes alignment features, producing an unaligned BAM (uBAM). We use an option in the RevertSam tool to output uBAMs for each read-group. This allows for parallelization of the next steps, for efficiency. The per-read-group uBAMs are then flowed through MarkIlluminaAdapters, SamToFastq and bwa-mem2, producing a GRCh38 aligned BAM (for a given read group). In the last step, I merge all the re-aligned per-read-group BAMs back into a single output; this will be named "[SAMPLE].fullmerged.bam"
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/5df34f9f-9167-4ac3-8ec9-7742378c3a49">
+  <img width="3498" height="1414" alt="Data Flow Diagram Whiteboard in Dark Yellow Light Yellow Black Monochromatic Style (1)" src="https://github.com/user-attachments/assets/35527034-b8fd-4f88-ba1d-9dbbded07cdd" />
 </div>
 
+Figure 2. Flowchart for re-alignment. Lighter yellow circles are inputs/intermediates. The dark yellow circle is the output. The yellow rectangles are the wrapper scripts I designed. Note that for a batch, the pre-process-pipe.sh will be running many times in unison, via a swarm job (5). 
+
 ```
-batch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -b [original bam]
+sbatch --mem=5g --gres=lscratch:25 submit-pre-process-pipe.sh -b [original bam]
   OR
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [location]
+sbatch --mem=5g --gres=lscratch:25 pre-process-pipe.sh -f [batch of original bams]
 
-  The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided.
-
-  -l pass the path to the directory containing the bam
-  -b pass the original bam file 
-```
-<br />
-The -l option was implemented as an earlier solution to batching, when the program still required that you copy BAM files to your work space in the format shown below. I left this option available for anyone who may prefer to use this format. Basically you would structure your working directory with one directory per sample, containing the original bam. Then, your batch file would contain a list of paths pointing to these sample folders in your working directory, one per line. 
-
-```
-[sample]
-  [sample].bam
-  [sample].bai
+  -h help
 ```
 
-If you want to run a batch with either -l or -b, you will need to loop through the batch textfile. Alternatively, you can run the program without looping, with just one BAM at a time. 
-```
-while read location; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $location ; done < HC-batch-091324.txt
-while read sample; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -b $sample ; done < HC-batch-091324.txt
-```
-
-It is on my to-do list to wrap these scripts such as to accept a batch list as input without requiring looping. 
+Note that computational resource allocations are hard-coded into pre-process-pipe.sh. **Memory, CPUs and lscratch are not especially necessary for the submit script, but it does need to be run with sbatch**.
 
 </details>
 
@@ -481,19 +466,20 @@ I plan to add another module to this progran to move the __annotated__ batch VCF
 2. https://gatk.broadinstitute.org/hc/en-us/articles/4403687183515--How-to-Generate-an-unmapped-BAM-from-FASTQ-or-aligned-BAM
 3. https://gatk.broadinstitute.org/hc/en-us/articles/360039568932--How-to-Map-and-clean-up-short-read-sequence-data-efficiently
 4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
-5. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
-6. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
-7. https://samtools.github.io/bcftools/bcftools.html
-8. https://www.htslib.org/workflow/filter.html
-9. https://speciationgenomics.github.io/filtering_vcfs/
-10. https://rstudio.github.io/renv/articles/renv.html
-11. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
-12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
-13. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
-14. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
-15. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
-16. https://blog.hail.is/introtohail/
-17. https://hail.is/docs/0.2/api.html
-18. https://discuss.hail.is/
+5. https://hpc.nih.gov/apps/swarm.html
+6. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
+7. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
+8. https://samtools.github.io/bcftools/bcftools.html
+9. https://www.htslib.org/workflow/filter.html
+10. https://speciationgenomics.github.io/filtering_vcfs/
+11. https://rstudio.github.io/renv/articles/renv.html
+12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
+13. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
+14. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
+15. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
+16. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
+17. https://blog.hail.is/introtohail/
+18. https://hail.is/docs/0.2/api.html
+19. https://discuss.hail.is/
 
 
