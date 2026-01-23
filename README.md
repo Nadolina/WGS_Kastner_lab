@@ -119,7 +119,7 @@ Re-alignment generally adheres to GATK best-practices guidelines (1,2,3,4). You 
 Pre-process-pipe.sh starts by using RevertSam to extract reads from the GRCh37 aligned bam, and removes alignment features, producing an unaligned BAM (uBAM). We use an option in the RevertSam tool to output uBAMs for each read-group. This allows for parallelization of the next steps, for efficiency. The per-read-group uBAMs are then flowed through MarkIlluminaAdapters, SamToFastq and bwa-mem2, producing a GRCh38 aligned BAM (for a given read group). In the last step, I merge all the re-aligned per-read-group BAMs back into a single output; this will be named "[SAMPLE].fullmerged.bam"
 
 <div align="center">
-  <img width="3498" height="1414" alt="Data Flow Diagram Whiteboard in Dark Yellow Light Yellow Black Monochromatic Style (1)" src="https://github.com/user-attachments/assets/35527034-b8fd-4f88-ba1d-9dbbded07cdd" />
+  <img width="3498" height="1414" src="https://github.com/user-attachments/assets/35527034-b8fd-4f88-ba1d-9dbbded07cdd">
 </div>
 
 Figure 2. Flowchart for re-alignment. Lighter yellow circles are inputs/intermediates. The dark yellow circle is the output. The yellow rectangles are the wrapper scripts I designed. Note that for a batch, the pre-process-pipe.sh will be running many times in unison, via a swarm job (5). 
