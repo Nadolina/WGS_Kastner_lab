@@ -88,7 +88,7 @@ You will also need to make sure the script is pointing to a directory containing
 
 ## The Pipeline 
 
-Click on the drop down arrows to view a module. 
+:arrow_down: **Click on the drop down arrows to view a module.** :arrow_down:
 
 <details>
 <summary>Module 1: Re-alignment to GRCh38</summary>
