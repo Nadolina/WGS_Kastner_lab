@@ -12,16 +12,6 @@ This README details the modules of the WGS pipeline developed for rare variant c
 
 Modules 3 and 4 can happen in parallel. 
 
-<br />
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/afd59b84-626c-4ffd-bb64-7e564739ec88"
-">
-
-The coloured boxes in this figure correspond to additional flowcharts describing subprocesses in the section 'The Pipeline'. 
-
-</div>
-
 
 <details> 
 
