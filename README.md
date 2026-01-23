@@ -84,15 +84,6 @@ This pipeline is primarily run using a text file that contains the path to one o
 ```
 You will also need to make sure the script is pointing to a directory containing the GRCh38 reference with decoys and alternate sequences (1). The necessary files are currently stored in /data/Kastner_PFS/references/HG38/. 
 
-The original input to the pipeline was based on the user copying the BAMs of interest to their working directory in the prescribe format shown below. For legacy purpose, and more options for the user, I have decided to leave this functionality, even though I __strongly recommend__ just passing a textfile of paths pointing to the original BAMs. 
-
-```
-[sample]
-  [sample].bam
-  [sample].bai 
-```
-
-
 </details>
 
 ## The Pipeline 
