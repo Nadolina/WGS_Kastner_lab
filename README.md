@@ -169,9 +169,9 @@ Like with module 1, you can loop through a batch file or just run per usual with
 
 ### Module 3: Variant calling with GATK 
 
-GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel (A). I combine chromosome gVCFs produced by HaplotypeCaller across samples with GATK's CombineGVCFs, resulting in 24 gVCFs (B). Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped (C). 
+GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5,6). The script, variant_calling_GATK.sh, generates swarms to run HaplotypeCaller on each chromosome of each sample in parallel. A second swarm combines gVCFs produced by HaplotypeCaller on a per-chromosome basis across samples with GATK's CombineGVCFs, resulting in 24 gVCFs. The chromosome-combined gVCFs are then genotyped. 
 
-After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model is data greedy, so we combine all the gentotyped CHRn-VCFs into a single VCF (D). Then we generate one VariantRecalibrator model for SNPs and another for indels (E,F), as recommended by GATK documentation (6). The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first (G), and then the indel model (H), resulting in a fully variant quality score recalibrated VCF. 
+After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. All genotyped per-chromosome VCFs are combined before being subject to recalibration. Then we generate one VariantRecalibrator model for SNPs and another for indels. The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first result in a fully variant quality score recalibrated VCF of SNPs and indels in our batch. 
 
 <div align="center">
   <img width="3518" height="976" src="https://github.com/user-attachments/assets/23701839-efda-4d31-9b2a-fa5ca9493e3b">
@@ -180,15 +180,12 @@ After genotyping, we then need to filter the called variants. GATK has a program
 <br />
 
 ```
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile]
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -o [batchfile]
 
-  -b This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line.
   -o This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line.
   -h help
 
 ```
-
-The -b is comparable to -l in previous modules. The -o requires a textfile of paths pointing to the original BAMs for a given sample, which the program will parse to identify the files it requires. You do not need to loop through the textfile as with previous modules. 
 
 </details>
 
