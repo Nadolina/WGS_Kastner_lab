@@ -107,8 +107,6 @@ Pre-process-pipe.sh starts by using RevertSam to extract reads from the GRCh37 a
 
 ```
 sbatch --mem=5g --gres=lscratch:25 submit-pre-process-pipe.sh -b [original bam]
-  OR
-sbatch --mem=5g --gres=lscratch:25 pre-process-pipe.sh -f [batch of original bams]
 
   -h help
 ```
@@ -122,26 +120,28 @@ Note that computational resource allocations are hard-coded into pre-process-pip
 
 ### Module 2: Alignment cleanup 
 
-This module follows instructions from GATK's pre-variant calling recommendations (4). Alignment cleanup involves marking duplicate read pairs and base quality score recalibration. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. __We fully remove duplicate read pairs.__
+This module follows instructions from GATK's pre-variant calling recommendations (4). The steps are:
+1) MarkDuplicatesSpark
+2) BaseRecalibrator (1)
+3) ApplyBQSR
+4) BaseRecalibrator (2)
+5) AnalyzeCovariates
 
-Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends running a second round of BQSR, which is compared to the first BQSR model using CovariateAnalysis, for quality assurance. 
+The goal of alignment cleanup is to optimize an aligned BAM for variant calling by mitigating artifacts. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. __We fully remove duplicate read pairs.__
 
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/0cd58f81-0d37-46cc-a711-7d775abab496">
-</div>
+Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends a second round of BQSR, which is compared to the first BQSR model using CovariateAnalysis, for quality assurance. 
 
-<br />
+MarkDuplicatesSpark is run on the whole BAM because it needs the whole file for accuracy, but the remaining steps are split by chromosome and run in parallel for efficiency. The per-chromosome base recalibrated BAMs are aggregated into a **final output with the naming convention {sample}_bqsr_1.bam**
+
+To run this module, pass the path for an __original BAM__ to the submit script, or pass a __text file containing one path per line to run a batch__, as such: 
 
 ```
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:seconds alignment_cleanup.sh [arguments]
+sbatch --time=days-hours:minutes:seconds submit_alignment_cleanup.sh [arguments]
 
-  -l location of sample working directory 
-  -b merged bam alignment
-  -o path to the original BAM 
-  -r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)
+  -b original BAM path
+  -f batch text file, one original BAM path per line 
   -h help
 ```
-Like with module 1, you can loop through a batch file or just run per usual with one bam or location. 
 
 </details>
 
