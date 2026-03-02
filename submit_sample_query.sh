@@ -53,6 +53,8 @@ while getopts ":s:p:l:h" opt; do
   esac
 done
 
+## PARSING INPUTS -----------------------------------
+
 if [[ -z "${SAMPLES}" ]]; then 
    printf "ERROR: no samples provided to -s.\n"
    help
@@ -69,10 +71,18 @@ done
 OUTDIR+="out"
 echo "Results will be written to ${OUTDIR}"
 
-module load hail
+PED_ARG=""
+if [[ -n "${PEDIGREE}" ]]; then
+  PED_ARG="--pedigree ${PEDIGREE}"
+fi
 
 scriptpth="$(scontrol show job "$SLURM_JOB_ID" | awk -F= '/Command=/{print $2}')"
 sourcedir="$(dirname $scriptpth)"
+
+module load hail
+
+## GENERATING SWARM SCRIPTS -----------------------------
+
 
 rundate=`date +'%m%d%y'`
 mkdir -p ${OUTDIR} ${OUTDIR}/sample_query_${rundate}_logs 
@@ -93,13 +103,14 @@ DB_PATHS=(
   "/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db4.bcftools.120225.mt"
 )
 
+DB=""
 if [[ -z "${LOCUS}" ]]; then 
   printf "No locus provided, querying all variants for samples.\n\n"
 
   for db in "${DB_PATHS[@]}"; do
     echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db ${db} \
       --samples ${SAMPLE_ARGS} \
-      --pedigree ${PEDIGREE} \
+      ${PED_ARG} \
       --outdir /lscratch/\${SLURM_JOB_ID}" >> sample-query-ped-${rundate}.swarm
   done
 
@@ -108,12 +119,9 @@ if [[ -z "${LOCUS}" ]]; then
       --b_ht_path ${OUTDIR}/db${num}.bcftools.120225.query.ht \
       --outdir ${OUTDIR}" >> combinepairs-${rundate}.swarm
   done 
-
 else
   printf "Querying variants at locus: ${LOCUS}\n\n"
   chr=$(echo "${LOCUS}" | cut -d':' -f1)
-
-  DB=""
 
   if [[ "${chr}" == @(chr1|chr2|chr3|chr4) ]]; then 
     echo "Searching db1 for locus ${LOCUS}..."
@@ -134,12 +142,12 @@ else
 
   echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db /data/Kastner_PFS/WGS/cohort_db/version_120225/db${DB}.gatk.120225.mt \
     --samples ${SAMPLE_ARGS} \
-    --pedigree ${PEDIGREE} \
+    ${PED_ARG} \
     --locus ${LOCUS} \
     --outdir /lscratch/\${SLURM_JOB_ID}" >> sample-query-ped-${rundate}.swarm
   echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db /data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db${DB}.bcftools.120225.mt \
     --samples ${SAMPLE_ARGS} \
-    --pedigree ${PEDIGREE} \
+    ${PED_ARG} \
     --locus ${LOCUS} \
     --outdir /lscratch/\${SLURM_JOB_ID}" >> sample-query-ped-${rundate}.swarm
   echo "python3-hail ${sourcedir}/hail-sample-ped-query-combinepairs.py --g_ht_path ${OUTDIR}/db${DB}.gatk.120225.query.ht \
@@ -148,9 +156,18 @@ else
 
 fi
 
+## MAIN ------------------------------------------------------
 
 query_jid=$(swarm sample-query-ped-${rundate}.swarm)
 combine_jid=$(swarm --dependency=afterok:${query_jid} combinepairs-${rundate}.swarm)
 
-
+if [[ -z "${DB}" ]]; then 
+  echo "combining results into output: python3-hail ${sourcedir}/hail-sample-ped-query-combineall.py --outdir ${OUTDIR}"
+  sbatch --dependency=afterok:${combine_jid} --wrap="echo 'Sample query and combination complete! Results in ${OUTDIR}' ; \
+    python3-hail ${sourcedir}/hail-sample-ped-query-combineall.py --outdir ${OUTDIR} --samples ${SAMPLES}"
+else 
+  echo "combining results into output: python3-hail ${sourcedir}/hail-sample-ped-query-combineall.py --outdir ${OUTDIR} --db ${DB}"
+  sbatch --dependency=afterok:${combine_jid} --wrap="echo 'Sample query and combination complete! Results in ${OUTDIR}' ; \
+    python3-hail ${sourcedir}/hail-sample-ped-query-combineall.py --outdir ${OUTDIR} --db ${DB} --samples ${SAMPLES}"
+fi
 

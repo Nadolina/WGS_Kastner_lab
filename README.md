@@ -12,16 +12,6 @@ This README details the modules of the WGS pipeline developed for rare variant c
 
 Modules 3 and 4 can happen in parallel. 
 
-<br />
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/afd59b84-626c-4ffd-bb64-7e564739ec88"
-">
-
-The coloured boxes in this figure correspond to additional flowcharts describing subprocesses in the section 'The Pipeline'. 
-
-</div>
-
 
 <details> 
 
@@ -94,60 +84,34 @@ This pipeline is primarily run using a text file that contains the path to one o
 ```
 You will also need to make sure the script is pointing to a directory containing the GRCh38 reference with decoys and alternate sequences (1). The necessary files are currently stored in /data/Kastner_PFS/references/HG38/. 
 
-The original input to the pipeline was based on the user copying the BAMs of interest to their working directory in the prescribe format shown below. For legacy purpose, and more options for the user, I have decided to leave this functionality, even though I __strongly recommend__ just passing a textfile of paths pointing to the original BAMs. 
-
-```
-[sample]
-  [sample].bam
-  [sample].bai 
-```
-
-
 </details>
 
 ## The Pipeline 
 
-Click on the drop down arrows to view a module. 
+:arrow_down: **Click on the drop down arrows to view a module.** :arrow_down:
 
 <details>
 <summary>Module 1: Re-alignment to GRCh38</summary>
 
 ### Module 1: Re-alignment 
 
-The process of extracting reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipe the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
+Re-alignment generally adheres to GATK best-practices guidelines (1,2,3,4). You pass your single original BAM or batch file of BAMs (as describe in **Inputs**) to submit-pre-process-pipe.sh. This will then either submit an sbatch job for running pre-process-pipe on your single BAM or generate a swarm (5) of pre-process-pipe.sh jobs. A swarm just deploys multiple similar jobs in parallel; in this case the same program with different input BAMs. 
 
-Samtools stats is run on both the original and final bam. Fastqc is run on the reverted bam to look at the quality of the sequence reads. 
+Pre-process-pipe.sh starts by using RevertSam to extract reads from the GRCh37 aligned bam, and removes alignment features, producing an unaligned BAM (uBAM). We use an option in the RevertSam tool to output uBAMs for each read-group. This allows for parallelization of the next steps, for efficiency. The per-read-group uBAMs are then flowed through MarkIlluminaAdapters, SamToFastq and bwa-mem2, producing a GRCh38 aligned BAM (for a given read group). In the last step, I merge all the re-aligned per-read-group BAMs back into a single output; this will be named "[SAMPLE].fullmerged.bam"
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/5df34f9f-9167-4ac3-8ec9-7742378c3a49">
+  <img width="3498" height="1414" src="https://github.com/user-attachments/assets/35527034-b8fd-4f88-ba1d-9dbbded07cdd">
 </div>
 
-```
-batch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -b [original bam]
-  OR
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [location]
-
-  The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided.
-
-  -l pass the path to the directory containing the bam
-  -b pass the original bam file 
-```
-<br />
-The -l option was implemented as an earlier solution to batching, when the program still required that you copy BAM files to your work space in the format shown below. I left this option available for anyone who may prefer to use this format. Basically you would structure your working directory with one directory per sample, containing the original bam. Then, your batch file would contain a list of paths pointing to these sample folders in your working directory, one per line. 
+###### Figure 2. Flowchart for re-alignment. Lighter yellow circles are inputs/intermediates. The dark yellow circle is the output. The yellow rectangles are the wrapper scripts I designed. Note that for a batch, the pre-process-pipe.sh will be running many times in unison, via a swarm job (5). 
 
 ```
-[sample]
-  [sample].bam
-  [sample].bai
+sbatch --mem=5g --gres=lscratch:25 submit-pre-process-pipe.sh -b [original bam]
+
+  -h help
 ```
 
-If you want to run a batch with either -l or -b, you will need to loop through the batch textfile. Alternatively, you can run the program without looping, with just one BAM at a time. 
-```
-while read location; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $location ; done < HC-batch-091324.txt
-while read sample; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -b $sample ; done < HC-batch-091324.txt
-```
-
-It is on my to-do list to wrap these scripts such as to accept a batch list as input without requiring looping. 
+Note that computational resource allocations are hard-coded into pre-process-pipe.sh. **Memory, CPUs and lscratch are not especially necessary for the submit script, but it does need to be run with sbatch**.
 
 </details>
 
@@ -156,26 +120,28 @@ It is on my to-do list to wrap these scripts such as to accept a batch list as i
 
 ### Module 2: Alignment cleanup 
 
-This module follows instructions from GATK's pre-variant calling recommendations (4). Alignment cleanup involves marking duplicate read pairs and base quality score recalibration. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. Here we fully remove duplicate read pairs. 
+This module follows instructions from GATK's pre-variant calling recommendations (4). The steps are:
+1) MarkDuplicatesSpark
+2) BaseRecalibrator (1)
+3) ApplyBQSR
+4) BaseRecalibrator (2)
+5) AnalyzeCovariates
 
-Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends running a second round of BQSR for quality assurance. The second model isn't applied, but instead we compare the models with CovariateAnalysis, which produces a pdf summary of the results. The documentation does not explain what the QC value is, but I assume it is to confirm that a the first model was adequate for correction and that a second would be of little benefit, or in fact introduce over-correction. 
+The goal of alignment cleanup is to optimize an aligned BAM for variant calling by mitigating artifacts. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. __We fully remove duplicate read pairs.__
 
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/0cd58f81-0d37-46cc-a711-7d775abab496">
-</div>
+Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends a second round of BQSR, which is compared to the first BQSR model using CovariateAnalysis, for quality assurance. 
 
-<br />
+MarkDuplicatesSpark is run on the whole BAM because it needs the whole file for accuracy, but the remaining steps are split by chromosome and run in parallel for efficiency. The per-chromosome base recalibrated BAMs are aggregated into a **final output with the naming convention {sample}_bqsr_1.bam**
+
+To run this module, pass the path for an __original BAM__ to the submit script, or pass a __text file containing one path per line to run a batch__, as such: 
 
 ```
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] --time=days-hours:minutes:seconds alignment_cleanup.sh [arguments]
+sbatch --time=days-hours:minutes:seconds submit_alignment_cleanup.sh [arguments]
 
-  -l location of sample working directory 
-  -b merged bam alignment
-  -o path to the original BAM 
-  -r start script after markduplicates spark, no input just pass the flag; ie./ if your previous run fails but generated the *markdups_sort.bam correctly (OPTIONAL)
+  -b original BAM path
+  -f batch text file, one original BAM path per line 
   -h help
 ```
-Like with module 1, you can loop through a batch file or just run per usual with one bam or location. 
 
 </details>
 
@@ -184,26 +150,23 @@ Like with module 1, you can loop through a batch file or just run per usual with
 
 ### Module 3: Variant calling with GATK 
 
-GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel (A). I combine chromosome gVCFs produced by HaplotypeCaller across samples with GATK's CombineGVCFs, resulting in 24 gVCFs (B). Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped (C). 
+GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5,6). The script, variant_calling_GATK.sh, generates swarms to run HaplotypeCaller on each chromosome of each sample in parallel. A second swarm combines gVCFs produced by HaplotypeCaller on a per-chromosome basis across samples with GATK's CombineGVCFs, resulting in 24 gVCFs. The chromosome-combined gVCFs are then genotyped. 
 
-After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model is data greedy, so we combine all the gentotyped CHRn-VCFs into a single VCF (D). Then we generate one VariantRecalibrator model for SNPs and another for indels (E,F), as recommended by GATK documentation (6). The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first (G), and then the indel model (H), resulting in a fully variant quality score recalibrated VCF. 
+After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. All genotyped per-chromosome VCFs are combined before being subject to recalibration. Then we generate one VariantRecalibrator model for SNPs and another for indels. The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first result in a fully variant quality score recalibrated VCF of SNPs and indels in our batch. 
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/c7eea530-4b99-40a7-9576-b9506fbb4042">
+  <img width="3518" height="976" src="https://github.com/user-attachments/assets/23701839-efda-4d31-9b2a-fa5ca9493e3b">
 </div>
 
 <br />
 
 ```
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile]
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -o [batchfile]
 
-  -b This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line.
   -o This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line.
   -h help
 
 ```
-
-The -b is comparable to -l in previous modules. The -o requires a textfile of paths pointing to the original BAMs for a given sample, which the program will parse to identify the files it requires. You do not need to loop through the textfile as with previous modules. 
 
 </details>
 
@@ -340,7 +303,17 @@ You can pass as many folders of annotated VCFs as you'd like.
 __NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the four hail databases are constructed. To construct the Hail databases, you must: 
 1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_091725 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
 2. Move the VCFs to your new directory from buildhail_*.
-3. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
+3. You need to combine the new *concat VCFs with the combined VCFs from the previous update. I use bcftools merge, but this will send you an error if there are duplicate samples. There may be duplicate runs on a given sample if say, a new family member was sequenced, and we wanted to variant call them together. Start by identifying duplicate samples with something like:
+
+```
+bcftools query -l [NEW DB1] > samples.txt
+bcftools query -l [OLD COMBINED DB1] >> samples.txt
+sort samples.txt | uniq -cd
+(or some variation of this)
+```
+4. Then, remove the samples from the OLD VCF. 
+   
+6. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
 
 ```
 bcftools merge -m none -Oz -o db1.gatk.[DATE].vcf.gz [previous version db1 vcf] [new db1 vcf]
@@ -471,19 +444,20 @@ I plan to add another module to this progran to move the __annotated__ batch VCF
 2. https://gatk.broadinstitute.org/hc/en-us/articles/4403687183515--How-to-Generate-an-unmapped-BAM-from-FASTQ-or-aligned-BAM
 3. https://gatk.broadinstitute.org/hc/en-us/articles/360039568932--How-to-Map-and-clean-up-short-read-sequence-data-efficiently
 4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
-5. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
-6. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
-7. https://samtools.github.io/bcftools/bcftools.html
-8. https://www.htslib.org/workflow/filter.html
-9. https://speciationgenomics.github.io/filtering_vcfs/
-10. https://rstudio.github.io/renv/articles/renv.html
-11. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
-12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
-13. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
-14. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
-15. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
-16. https://blog.hail.is/introtohail/
-17. https://hail.is/docs/0.2/api.html
-18. https://discuss.hail.is/
+5. https://hpc.nih.gov/apps/swarm.html
+6. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
+7. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
+8. https://samtools.github.io/bcftools/bcftools.html
+9. https://www.htslib.org/workflow/filter.html
+10. https://speciationgenomics.github.io/filtering_vcfs/
+11. https://rstudio.github.io/renv/articles/renv.html
+12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
+13. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
+14. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
+15. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
+16. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
+17. https://blog.hail.is/introtohail/
+18. https://hail.is/docs/0.2/api.html
+19. https://discuss.hail.is/
 
 

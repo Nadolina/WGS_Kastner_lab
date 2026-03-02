@@ -75,7 +75,7 @@ generate_HC_swarm() { ## pass the input bam and ID number as positional argument
                 -I ${inbam} \
                 -L ${chrnum} \
                 -O ${PWD}/${id}/${id}_out/gvcfs_${rundate}/${chrnum}.g.vcf.gz \
-                -G StandardAnnotation -G AS_StandardAnnotation -G StandardHCAnnotation --pcr-indel-model NONE -ERC GVCF \
+                -G StandardAnnotation -G AS_StandardAnnotation -G StandardHCAnnotation -ERC GVCF \
                 --native-pair-hmm-threads 4 \
                 --tmp-dir /lscratch/\${SLURM_JOB_ID} \
                 2> ${PWD}/${id}/${id}_out/logs_${rundate}/log-HC-${chrnum}-\${SLURM_JOB_ID}.txt" >> HC-${rundate}-${id}.swarm

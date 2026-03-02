@@ -14,7 +14,7 @@ Help()
     echo "
     Use the following command:
 
-        sbatch [parameters] globus_transfer.sh -o [batch] -g [GATK VCF (unannotated)] -b [bcftools VCF (unannotated)]
+        sbatch [parameters] data_organization.sh -o [batch] -g [GATK VCF (unannotated)] -b [bcftools VCF (unannotated)]
 
         -o batch file of paths to original bams 
         -g gatk batch VCF
@@ -60,7 +60,7 @@ function run_batch() {
     ## Identifying sample ID and BQSR bams
     sample=$(echo ${bam} | awk -F '/' '{print $NF}' | sed 's/.bam//g' )
     newbam=${PWD}/${sample}/${sample}_out/${sample}_bqsr_1.bam 
-    newbai=${PWD}/${sample}/${sample}_out/${sample}_bqsr_1.bai
+    newbai=${PWD}/${sample}/${sample}_out/${sample}_bqsr_1.bam.bai
 
     if [[ "$bam" == *"/data/Kastner_PFS/WGS/"* ]]; then 
         mod_date=$(echo ${bam} | cut -f 5 -d'/')

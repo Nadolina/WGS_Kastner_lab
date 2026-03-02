@@ -93,13 +93,16 @@ def sample_search_nontrio(db, samples, locus=None):
             interval = hl.parse_locus_interval(f"{locus}", reference_genome="GRCh38")
             mt = mt.filter_rows(interval.contains(mt.locus))
 
-        pedtsv=pd.read_csv(args.pedigree, delim_whitespace=True, header=None)
-        probands = [str(pro) for pro in pedtsv.loc[pedtsv[5] == 2, 1].tolist()]
-        if len(probands) == 0:
-            print ("ERROR: No affected individuals found in the pedigree.")
-            return
-        print ("Affected individuals in the pedigree:", probands)
-
+        if args.pedigree is not None:
+            pedtsv=pd.read_csv(args.pedigree, delim_whitespace=True, header=None)
+            probands = [str(pro) for pro in pedtsv.loc[pedtsv[5] == 2, 1].tolist()]
+            if len(probands) == 0:
+                print ("ERROR: No affected individuals found in the pedigree.")
+                return
+            print ("Affected individuals in the pedigree:", probands)
+        else:
+            probands=[str(s) for s in samples]
+            print ("No pedigree provided - treating all samples as probands.")
         query = query_filter(probands, mt, samples)
 
         ht_annot = common_annots(mt, query)
@@ -247,4 +250,5 @@ if __name__ == '__main__':
             sample_search_nontrio(args.db, args.samples, args.locus)
         else:
             sample_search_trio(args.db, args.samples, args.locus)
-
+    else:
+        sample_search_nontrio(args.db,args.samples,args.locus)
