@@ -50,6 +50,7 @@ ref=/data/Kastner_PFS/references/HG38/Homo_sapiens_assembly38.fasta
 
 set -x
 
+mkdir -p /lscratch/${SLURM_JOB_ID}
 gatk MarkDuplicatesSpark --java-options "-Xms60G -Xmx60G" \
 	-I ${mbam} \
 	-O ${OUTDIR}/${sample}.marked_dups.bam \
@@ -135,7 +136,7 @@ for chr in ${chrs}; do
 	BQSRTABLES+="-I ${OUTDIR}/chr${chr}.${sample}_bqsr_1.table "
 done
 BQSRTABLES+="-I ${OUTDIR}/${sample}.alt_contigs.bqsr_1.table"
-gather_jid=$(sbatch --mem=10g --gres=lscratch:100 --time=4:00:00 --dependency afterok:${bqsr_1_jid} \
+gather_jid=$(sbatch --mem=5g --dependency afterok:${bqsr_1_jid} \
 	--wrap="module load GATK/4.6.0.0 ; gatk GatherBQSRReports ${BQSRTABLES} \
 		-O ${OUTDIR}/${sample}_combined_bqsr_1.table \
 		2> ${LOGS}/gatherBQSRReports_${rundate}.err")
@@ -147,17 +148,27 @@ BAMs=""
 for chr in ${chrs}; do 
 	BAMs+="${OUTDIR}/chr${chr}.${sample}_bqsr_1.bam "
 done
+BAMs="${OUTDIR}/${sample}.alt_contigs.bqsr_1.bam"
 
 merge_jid=$(sbatch --mem=16g -c 4 --gres=lscratch:100 --time=4:00:00 --dependency afterok:${bqsr_2_jid} \
 	--wrap="module load samtools ; samtools merge -f -@4 -o ${OUTDIR}/${sample}_bqsr_1.bam --write-index ${BAMs}")
 
 ## Removing intermediaries -------
 
-intermediates1=$(ls ${OUTDIR}/*.mergedaln.bam ${OUTDIR}/*mergedaln.bai ${OUTDIR}/*.marked_dups.bam)
-intermediates2=$(for CHR in $(echo $(seq 1 1 22) X Y); do ls -ltrh ${OUTDIR}/chr${CHR}.${sample}_bqsr_1.ba* ; done)
+# intermediates1=$(ls ${OUTDIR}/*.mergedaln.bam ${OUTDIR}/*mergedaln.bai ${OUTDIR}/*.marked_dups.bam)
+# intermediates2=$(for CHR in $(echo $(seq 1 1 22) X Y); do ls ${OUTDIR}/chr${CHR}.${sample}_bqsr_1.ba* ; done)
+
+intermediates=""
+for f in ${OUTDIR}/*.mergedaln.ba* ; do 
+	intermediates+="${f} "
+done
+intermediates+="${OUTDIR}/*.marked_dups.ba* "
+for CHR in $(echo $(seq 1 1 22) X Y); do 
+	intermediates+="${OUTDIR}/chr${CHR}.${sample}_bqsr_1.ba* "
+done
 
 sbatch --dependency afterok:${merge_jid} \
-	--wrap="echo 'Final BQSR BAM merged finished successfully; deleting intermediate files' && rm -f ${intermediates1} ${intermediates2}"
+	--wrap="echo 'Final BQSR BAM merged finished successfully; deleting intermediate files' && rm -f ${intermediates}"
 
 set +x
 

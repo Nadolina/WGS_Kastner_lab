@@ -49,6 +49,8 @@ def query_pair_combine(g_ht_path,b_ht_path,outdir):
         b_antijoin_drop = b_antijoin_drop.annotate(bcftools_only="True").checkpoint(f"{outdir}/{b_ht_prefix}_antijoin_drop.ht", overwrite=True)
 
         ht=g_ht_drop.union(b_antijoin_drop)
+        ht=ht.key_by('locus','alleles')
+
         dbprefix=(Path(g_ht_path).name).split(".")[0]
         ht_out="".join([outdir,"/",dbprefix,".query.ht"])
         print ("Results written to: ", ht_out)
