@@ -12,16 +12,6 @@ This README details the modules of the WGS pipeline developed for rare variant c
 
 Modules 3 and 4 can happen in parallel. 
 
-<br />
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/afd59b84-626c-4ffd-bb64-7e564739ec88"
-">
-
-The coloured boxes in this figure correspond to additional flowcharts describing subprocesses in the section 'The Pipeline'. 
-
-</div>
-
 
 <details> 
 
@@ -94,60 +84,36 @@ This pipeline is primarily run using a text file that contains the path to one o
 ```
 You will also need to make sure the script is pointing to a directory containing the GRCh38 reference with decoys and alternate sequences (1). The necessary files are currently stored in /data/Kastner_PFS/references/HG38/. 
 
-The original input to the pipeline was based on the user copying the BAMs of interest to their working directory in the prescribe format shown below. For legacy purpose, and more options for the user, I have decided to leave this functionality, even though I __strongly recommend__ just passing a textfile of paths pointing to the original BAMs. 
-
-```
-[sample]
-  [sample].bam
-  [sample].bai 
-```
-
-
 </details>
 
 ## The Pipeline 
 
-Click on the drop down arrows to view a module. 
+:arrow_down: **Click on the drop down arrows to view a module.** :arrow_down:
 
 <details>
 <summary>Module 1: Re-alignment to GRCh38</summary>
 
 ### Module 1: Re-alignment 
 
-The process of extracting reads from an aligned BAM mostly adheres to the instructions in (2). This extracts the sequences, and removes alignment features, producing an unaligned BAM (uBAM). Then, we mark any adapters which may be artifacts from sequencing and can interfere with alignment. MarkIlluminaAdapters produces a new BAM with these demarcations, as well as a metrics file describing the adapters found, but for space, the demarcated BAM is deleted, and the metrics are retained. In the last step, I pipe the adapter-marked bam through SamToFastq, bwa-mem2 alignment to GRCh38 with decoys, and MergeBamAlignment to concatenate the unmapped reads back to the final bam. 
+Re-alignment generally adheres to GATK best-practices guidelines (1,2,3,4). You pass your single original BAM or batch file of BAMs (as describe in **Inputs**) to submit-pre-process-pipe.sh. This will then either submit an sbatch job for running pre-process-pipe on your single BAM or generate a swarm (5) of pre-process-pipe.sh jobs. A swarm just deploys multiple similar jobs in parallel; in this case the same program with different input BAMs. 
 
-Samtools stats is run on both the original and final bam. Fastqc is run on the reverted bam to look at the quality of the sequence reads. 
+Pre-process-pipe.sh starts by using RevertSam to extract reads from the GRCh37 aligned bam, and removes alignment features, producing an unaligned BAM (uBAM). We use an option in the RevertSam tool to output uBAMs for each read-group. This allows for parallelization of the next steps, for efficiency. The per-read-group uBAMs are then flowed through MarkIlluminaAdapters, SamToFastq and bwa-mem2, producing a GRCh38 aligned BAM (for a given read group). In the last step, I merge all the re-aligned per-read-group BAMs back into a single output; this will be named "[SAMPLE].fullmerged.bam"
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/5df34f9f-9167-4ac3-8ec9-7742378c3a49">
+  <img width="3498" height="1414" src="https://github.com/user-attachments/assets/35527034-b8fd-4f88-ba1d-9dbbded07cdd">
 </div>
 
+Figure 2. Flowchart for re-alignment. Lighter yellow circles are inputs/intermediates. The dark yellow circle is the output. The yellow rectangles are the wrapper scripts I designed. Note that for a batch, the pre-process-pipe.sh will be running many times in unison, via a swarm job (5). 
+
 ```
-batch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -b [original bam]
+sbatch --mem=5g --gres=lscratch:25 submit-pre-process-pipe.sh -b [original bam]
   OR
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] pre-process-pipe.sh -l [location]
+sbatch --mem=5g --gres=lscratch:25 pre-process-pipe.sh -f [batch of original bams]
 
-  The -l [locations] option will look in the folder for anything that matches *.bam, so ensure the bam of interest is the only *.bam in the folder provided.
-
-  -l pass the path to the directory containing the bam
-  -b pass the original bam file 
-```
-<br />
-The -l option was implemented as an earlier solution to batching, when the program still required that you copy BAM files to your work space in the format shown below. I left this option available for anyone who may prefer to use this format. Basically you would structure your working directory with one directory per sample, containing the original bam. Then, your batch file would contain a list of paths pointing to these sample folders in your working directory, one per line. 
-
-```
-[sample]
-  [sample].bam
-  [sample].bai
+  -h help
 ```
 
-If you want to run a batch with either -l or -b, you will need to loop through the batch textfile. Alternatively, you can run the program without looping, with just one BAM at a time. 
-```
-while read location; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -l $location ; done < HC-batch-091324.txt
-while read sample; do sbatch --mem=48g --cpus-per-task=8 --gres=lscratch:400  $SCRIPTS/pre-process-pipe.sh -b $sample ; done < HC-batch-091324.txt
-```
-
-It is on my to-do list to wrap these scripts such as to accept a batch list as input without requiring looping. 
+Note that computational resource allocations are hard-coded into pre-process-pipe.sh. **Memory, CPUs and lscratch are not especially necessary for the submit script, but it does need to be run with sbatch**.
 
 </details>
 
@@ -184,26 +150,23 @@ Like with module 1, you can loop through a batch file or just run per usual with
 
 ### Module 3: Variant calling with GATK 
 
-GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5). At this point, the pipeline becomes more parallelized. I generate Biowulf swarms to run HaplotypeCaller on each chromosome of each sample in parallel (A). I combine chromosome gVCFs produced by HaplotypeCaller across samples with GATK's CombineGVCFs, resulting in 24 gVCFs (B). Documentation recommends using GenomicsDB for this gVCF gathering step, but for ease of use I chose CombineGVCFs. The chromosome-combined gVCFs are then genotyped (C). 
+GATK variant calling mostly subscribes to the recommendations in GATK's documentation and tutorials (5,6). The script, variant_calling_GATK.sh, generates swarms to run HaplotypeCaller on each chromosome of each sample in parallel. A second swarm combines gVCFs produced by HaplotypeCaller on a per-chromosome basis across samples with GATK's CombineGVCFs, resulting in 24 gVCFs. The chromosome-combined gVCFs are then genotyped. 
 
-After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. This model is data greedy, so we combine all the gentotyped CHRn-VCFs into a single VCF (D). Then we generate one VariantRecalibrator model for SNPs and another for indels (E,F), as recommended by GATK documentation (6). The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first (G), and then the indel model (H), resulting in a fully variant quality score recalibrated VCF. 
+After genotyping, we then need to filter the called variants. GATK has a program for this called Variant Quality Score Recalibration, which is akin to BQSR. Again using prior knowledge from curated datasets like dnsnp and 1000Genomes, and annotations in our VCF, VariantRecalibrator tries to model variant scores that are likely to be true variants. All genotyped per-chromosome VCFs are combined before being subject to recalibration. Then we generate one VariantRecalibrator model for SNPs and another for indels. The models are applied back to the VCF to organize variants into tranches, effectively filtering them. The SNP model is applied first result in a fully variant quality score recalibrated VCF of SNPs and indels in our batch. 
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/c7eea530-4b99-40a7-9576-b9506fbb4042">
+  <img width="3518" height="976" src="https://github.com/user-attachments/assets/23701839-efda-4d31-9b2a-fa5ca9493e3b">
 </div>
 
 <br />
 
 ```
-sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -b [batchfile]
+sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -o [batchfile]
 
-  -b This is a textfile of the IDs (assuming you are following the prescribed directory structure, and you have working directories named with their IDs only), with one ID on each line.
   -o This is a textfile of the original bam paths, assuming you have bams in locations other than the working directory and created this file for use in pre-process-pipe.sh. One path per line.
   -h help
 
 ```
-
-The -b is comparable to -l in previous modules. The -o requires a textfile of paths pointing to the original BAMs for a given sample, which the program will parse to identify the files it requires. You do not need to loop through the textfile as with previous modules. 
 
 </details>
 
@@ -299,9 +262,9 @@ sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
 
 Hail is a database software designed specifically for managing genomic data, because standard dataframe options like SQL are not as sophisticated for this work (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a multi-sample VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
 
-Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database for a gene, although it does not improve the speed of a sample query. In querying for either genes or samples, the isolation of that specific gene or sample(s) is fairly quick. The resulting query is temporarily stored as a new matrix table. However, I add more annotations (pLI, LOEUF, mis-Z-score, bcftools calls, etc.) to the query, and also perform some reformating for easier filtering when the output TSV is view in excel. 
+Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database because it allows the query to be parallelized. 
 
-Batch VCFs need to be modified before building these four hail databases. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools.sh. These are a little redundant, and will be consolidated at some point, per my laundry list. I only wrote them separately because the naming scheme for bcftools files and bcftools annotations are different from GATK. The scripts:
+Batch VCFs need to be modified before building these four hail databases. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools.sh. These are a little redundant, and will be consolidated at some point, per my laundry list. Bcftools and GATK variants are stored in separate hail databases because they have discongruant annotations. When performing queries with either submit-sample-query.sh or hail-gene-query.py, variants from both callers are consolidated in the outputs. The scripts:
 1. accept a list of folders containing batch annotated VCF files
 2. merge chromosomes across batches annotated VCFs (i.e./ 1 with 1, 2 with 2, etc.)
 3. convert consequence blocks into a Hail compatible format (bcftools csq-split pluggin)
@@ -317,10 +280,10 @@ The script will submit three series of swarm commands, one to perform any necess
     ...
     chrN.split.vcf.gz
     chrN.split.vcf.gz.csi 
-    db1.concat.[rundate].vcf.gz
-    db2.concat.[rundate].vcf.gz
-    db3.concat.[rundate].vcf.gz
-    db4.concat.[rundate].vcf.gz 
+    db1.*.[rundate].vcf.gz
+    db2.*.[rundate].vcf.gz
+    db3.*.[rundate].vcf.gz
+    db4.*.[rundate].vcf.gz 
 
 ```
 sbatch [OPTIONS] build_hail_2.sh [batch annotation folder 1] [batch annotation folder 2] ... [batch annotation folder n]
@@ -338,14 +301,23 @@ You can pass as many folders of annotated VCFs as you'd like.
 ```
 
 __NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the four hail databases are constructed. To construct the Hail databases, you must: 
-1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_031925 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
-2. Move the VCFs to your new directory.
-3. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
+1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_091725 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
+2. Move the VCFs to your new directory from buildhail_*.
+3. You need to combine the new *concat VCFs with the combined VCFs from the previous update. I use bcftools merge, but this will send you an error if there are duplicate samples. There may be duplicate runs on a given sample if say, a new family member was sequenced, and we wanted to variant call them together. Start by identifying duplicate samples with something like:
 
 ```
-bcftools merge -m none -Oz -o [merged VCF] db1.concat.031725.vcf.gz db1.concat.[rundate].vcf.gz
-bcftools merge -m none -Oz -o [newname] db2.concat.031725.vcf.gz db2.concat.[rundate].vcf.gz
-etc.
+bcftools query -l [NEW DB1] > samples.txt
+bcftools query -l [OLD COMBINED DB1] >> samples.txt
+sort samples.txt | uniq -cd
+(or some variation of this)
+```
+4. Then, remove the samples from the OLD VCF. 
+   
+6. Assuming the batches you passed to build_hail_2.sh and build_hail_bcftools.sh have not been included in previous versions of the database, merge the previous versions' VCFs with yours. Once merged, you will have your four cohort representive VCFs from which you can finally build your matrix tables. For example:
+
+```
+bcftools merge -m none -Oz -o db1.gatk.[DATE].vcf.gz [previous version db1 vcf] [new db1 vcf]
+bcftools merge -m none -Oz -o db1.gatk.[RUNDATE].vcf.gz db1.gatk.091725.vcf.gz  db1.concat.[rundate].vcf.gz
 ```
   
 4. Start an sinteractive session and allocation at least 40g of memory and 16 cores.
@@ -382,23 +354,13 @@ At this point you should have eight matrix tables (between GATK and bcftools) re
 
 ### Module 7: Querying the Hail database 
 
-Hail has extensive functionality for querying matrix tables containing genomic data. I have coded two python programs for sample and gene querying, but I strongly encourage you to review their interactive python documentation (17). The programs are hail-gene-query.py and hail-sample-query.py, which are located in /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_Lab. I also recommend consulting their forum for any questions you may have; there is a very active community of users and Hail engineers troubleshooting a variety of problems on the forum (18). 
+<br />
 
-Hail-gene-query.py will collect any variants in the gene of interest, and aggregate a list of heterozygous and alt-homozygous samples as called by GATK and/or bcftools. The script adds some further annotation, and reformats the Hail table into a pandas dataframe that can be easily exported to a TSV with a name 'hail-[GENE SYMBOL]-[DATE].tsv'. This should only take a few minutes to collect. 
+<div align="center">
+  <img width="3162" height="980" alt="Decision Tree Team Whiteboard in Burgundy Peach Simple Colorful Style (5)" src="https://github.com/user-attachments/assets/2f7608a8-9d85-4718-99a8-71f10a5f707c" />
+</div>
 
-The second script is hail-sample-query.py. __NOTE__ that this sample query only outputs 'MODERATE' and 'HIGH' impact variants, per VEP's classification. This output can be quite substantial, and so I chose to apply this preliminary filtering. This adds the same annotations, and will again aggregate across samples at each variant site to list the heterozygous and alt-homozygous samples called by GATK and/or bcftools. This will of course be limited to just the samples you pass. You can pass multiple samples to the program as a space-delimited list. Since the script will go through each sub-database, as opposed to just one for a specific gene, this program does take a bit more time. 
-
-I wanted to implement a way to further filter the hail-sample-query.py outputs. So, I coded an additional parameter -n (--n_non_ref), which allows the user to tell the program to only retain variants where the sum of non-reference genoetypes between the prescribed samples is equal to or greater than a given number. For example, if you have a trio, with a known effected parent and patient, you could pass -n 2, so that you only look at sites where at least two of the three samples contain alternate genotypes. You need to pass a minimum of -n 1. 
-
-```
-module load hail
-
-python3-hail hail-gene-query.py -g [GENE SYMBOL, i.e/MEFV]
-
-python3-hail hail-samply-query.py -s [SAMPLE ID 1] [SAMPLE ID 2] ... [SAMPLE ID N] -n [number of non-ref genotypes]
-ex.  python3-hail hail-samply-query.py -s 1122 1123 1124 -n 2
-
-```
+<br />
 
 </details>
 
@@ -482,19 +444,20 @@ I plan to add another module to this progran to move the __annotated__ batch VCF
 2. https://gatk.broadinstitute.org/hc/en-us/articles/4403687183515--How-to-Generate-an-unmapped-BAM-from-FASTQ-or-aligned-BAM
 3. https://gatk.broadinstitute.org/hc/en-us/articles/360039568932--How-to-Map-and-clean-up-short-read-sequence-data-efficiently
 4. https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery
-5. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
-6. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
-7. https://samtools.github.io/bcftools/bcftools.html
-8. https://www.htslib.org/workflow/filter.html
-9. https://speciationgenomics.github.io/filtering_vcfs/
-10. https://rstudio.github.io/renv/articles/renv.html
-11. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
-12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
-13. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
-14. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
-15. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
-16. https://blog.hail.is/introtohail/
-17. https://hail.is/docs/0.2/api.html
-18. https://discuss.hail.is/
+5. https://hpc.nih.gov/apps/swarm.html
+6. https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels
+7. https://gatk.broadinstitute.org/hc/en-us/articles/360035531612-Variant-Quality-Score-Recalibration-VQSR
+8. https://samtools.github.io/bcftools/bcftools.html
+9. https://www.htslib.org/workflow/filter.html
+10. https://speciationgenomics.github.io/filtering_vcfs/
+11. https://rstudio.github.io/renv/articles/renv.html
+12. https://useast.ensembl.org/info/docs/tools/vep/script/vep_options.html#basic
+13. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html
+14. https://bioinformatics.stackexchange.com/questions/22124/variants-from-multiple-tools-normalization-before-or-after-annotation-with-vep
+15. https://www.ensembl.info/2020/05/26/normalising-variants-to-standardise-ensembl-vep-output/
+16. https://useast.ensembl.org/info/docs/tools/vep/script/vep_other.html#pick_options
+17. https://blog.hail.is/introtohail/
+18. https://hail.is/docs/0.2/api.html
+19. https://discuss.hail.is/
 
 
