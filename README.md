@@ -103,7 +103,7 @@ Pre-process-pipe.sh starts by using RevertSam to extract reads from the GRCh37 a
   <img width="3498" height="1414" src="https://github.com/user-attachments/assets/35527034-b8fd-4f88-ba1d-9dbbded07cdd">
 </div>
 
-Figure 2. Flowchart for re-alignment. Lighter yellow circles are inputs/intermediates. The dark yellow circle is the output. The yellow rectangles are the wrapper scripts I designed. Note that for a batch, the pre-process-pipe.sh will be running many times in unison, via a swarm job (5). 
+###### Figure 2. Flowchart for re-alignment. Lighter yellow circles are inputs/intermediates. The dark yellow circle is the output. The yellow rectangles are the wrapper scripts I designed. Note that for a batch, the pre-process-pipe.sh will be running many times in unison, via a swarm job (5). 
 
 ```
 sbatch --mem=5g --gres=lscratch:25 submit-pre-process-pipe.sh -b [original bam]
@@ -122,9 +122,9 @@ Note that computational resource allocations are hard-coded into pre-process-pip
 
 ### Module 2: Alignment cleanup 
 
-This module follows instructions from GATK's pre-variant calling recommendations (4). Alignment cleanup involves marking duplicate read pairs and base quality score recalibration. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. Here we fully remove duplicate read pairs. 
+This module follows instructions from GATK's pre-variant calling recommendations (4). Alignment cleanup involves marking duplicate read pairs and base quality score recalibration. Duplicate read pairs can arise from the same DNA fragments in sequencing, and unless marked variant callers may consider them as independent sequences, which would be inaccurate. __We fully remove duplicate read pairs.__
 
-Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends running a second round of BQSR for quality assurance. The second model isn't applied, but instead we compare the models with CovariateAnalysis, which produces a pdf summary of the results. The documentation does not explain what the QC value is, but I assume it is to confirm that a the first model was adequate for correction and that a second would be of little benefit, or in fact introduce over-correction. 
+Base recalibration models the base quality scores using prior knowledge of variant sites, to identify patterns of sequencing bias. The model is applied to the bam to correct these biases. GATK documentation then recommends running a second round of BQSR, which is compared to the first BQSR model using CovariateAnalysis, for quality assurance. 
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/0cd58f81-0d37-46cc-a711-7d775abab496">
