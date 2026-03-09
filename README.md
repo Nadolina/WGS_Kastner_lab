@@ -167,7 +167,6 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -o
   -h help
 
 ```
-
 </details>
 
 <details>
@@ -175,19 +174,15 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -o
 
 ### Module 4: Variant calling with bcftools
 
-<img align="right" src="https://github.com/user-attachments/assets/d4e7ec8d-7904-4bd1-b688-49e314005de4">
-
-Lierature suggests using two or more variant callers, because there are several highly accurate SNP and indel callers available, and concordance between multiple callers lends confidence to  calls. In addition to GATK, this workflow performs variant calling with bcftools (7). This module also starts with the base recalibrated BAMs from the batch. Using the swarm functionality again, we run bcftools mpileup per chromosome, across samples, producing 24 VCFs. These VCFs are annotated with known alleles frequencies from the 1000 Genomes project, because the --prior-freqs flag is used in the bcftools call command to improve calling performance. 
-
-<br />
+Lierature suggests using two or more variant callers, because there are several highly accurate SNP and indel callers available, and concordance between multiple callers lends confidence to  calls. In addition to GATK, this workflow performs variant calling with bcftools (7). This module also starts with the base recalibrated BAMs from the batch. Using the swarm functionality again, we run bcftools mpileup per chromosome, across samples, producing 24 VCFs. 
 
 Unlike GATK, bcftools does not have a model to perform filtering. There are various approaches to filtering, but most tutorials and documentation recommend a hard-filtering approach. My approach was largely informed by the recommendations in (8,9). In nearly all the VCFs we have received from NISC, you can see the same set of hard filters have been applied to SNPs and indels. These are very common filtering parameters and values. 
 
   ![image](https://github.com/user-attachments/assets/52d42b91-a062-4e3f-a992-4e35288c556b)
 
-I wanted to make our filtering workflow a little more adaptable. Instead of applying the same filtering thresholds to all of our batches, I aim to identify thresholds that are tailored to the batch, to try to mitigate changes and biases in the batch. I take a subset (1%) of SNPs and indels from each batch, and extract their variant metrics. I identify the extreme outlier values in the subset using just quantiles, and apply those back to the whole batch of variants as filtering thresholds. For SNPs, we use the following metrics: variant quality, depth and mapping quality Z-score (MQBZ). MQBZ looks at the differences in mapping quality at heterozygous sites, because significant differences at the ALT allele could indicate a false positive. For indels, quality and depth are also used, as well as IMF, which is the fraction of reads supporting an indel.  
+I wanted to make our filtering workflow a little more adaptable. Instead of applying the same filtering thresholds to all of our batches, I aim to identify thresholds that are tailored to the batch, to try to mitigate changes and biases in the batch. The pipeline takes a subset (1%) of SNPs and indels from each batch, and identifies extreme outlier values in variant metrics. For SNPs, we use the following metrics: variant quality, depth and mapping quality Z-score (MQBZ). MQBZ looks at the differences in mapping quality at heterozygous sites, because significant differences at the ALT allele could indicate a false positive. For indels, quality and depth are also used, as well as IMF, which is the fraction of reads supporting an indel.  
 
-In the example below, you can see the range of quality values varies between Batch 1 and 2, with Batch 1 exhibiting on average higher quality values. If we were apply the same quality filter to both batches, we would remove more variants in Batch 2 than 1, and there is an increased chance we are removing true variants. The motivation is to try to accomodate those metric variations between batches, to retain as many true variants as possible. While this does mean the filtering thresholds won't be standardize and this can complicate methods reporting a bit, I expect that metrics should hold relatively steady between batches and so thresholds should be similar. This approach is more of a contingency than anything. 
+In the example below, you can see the range of quality values varies between Batch 1 and 2, with Batch 1 exhibiting on average higher quality values. If we were apply the same quality filter to both batches, we would remove more variants in Batch 2 than 1, and there is an increased chance we are removing true variants. The motivation is to try to accomodate those metric variations between batches, to retain as many true variants as possible. While this does mean the filtering thresholds won't be standardize and this can complicate methods reporting a bit, thresholds should be comparable between batches. 
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/62bd4413-f982-483e-96db-c898d5c36ae1">
@@ -195,7 +190,7 @@ In the example below, you can see the range of quality values varies between Bat
 
 <br />
 
-Because this approach varies with each batch, I wanted to ensure we had QC outputs describing the thresholds identified. So, the filtering program produces a report on the subset statistics, in the form of an HTML file so it can be viewed in any browser. Below is an example of one of the figures in the HTML report. 
+The bcftools filter step produces an HTML describing the metrics found and thresholds applied to a given batch. Below is an example of a figure from the report. 
 
 <br />
 
@@ -238,11 +233,7 @@ Annotations employed include:
 * ClinVar
 * GERP
 
-I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on the --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls within a canonical transcript (11). 
-
-After annotation, I apply a very simple filter of 'gnomADg_AF_joint < 0.2 or not gnomADg_AF_joint'. So, we only retain variants that have a maximum joint (gnomAD exome and genome) allele frequency of 0.2, or if they do not have a joint AF at all, because absense from gnomAD may indicate the variant is rare. I also apply --only_matched, which will only retain consequence blocks that pass the prescribed filters, if a variant has more than one block. This is more useful if a variant has multiple recorded consequences, i.e./ "intron_variant&non_coding_transcript_variant" and "upstream_gene_variant", and one of your filters is to retain only intron variants. Then, the --only_matched would remove the upstream_gene_variant block. Allelic frequenices for a given variant do not change between blocks, so this does not really apply but I have included it nonetheless. 
-
-After annotation and filtering you will have a *vcf and *filtered.vcf for each chromosome for a batch of samples. 
+I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on the --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls within a canonical transcript (11). After annotation, I filter out variants with a gnomAD joint allele frequency greater than 0.2.
 
 This VEP script just takes a VCF as input, so it can be applied to one or more samples from any variant caller. I pass batch VCFs from both GATK and bcftools to run-VEP.sh. VEP does not have sophisticated threading, parallelization or lscratch space usage, so I recommend only allocating 10-15g of memory across the biowulf default of 2 threads. 
 
@@ -252,6 +243,7 @@ sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
   -v VCF
   -h help
 ```
+The outputs include a *.vcf and *.filtered.vcf for each chromosome (1-22, X, Y). 
 
 </details>
 
