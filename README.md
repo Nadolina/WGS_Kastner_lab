@@ -174,13 +174,9 @@ sbatch --mem=[] --cpus-per-task=[] --gres=lscratch:[] variant_calling_GATK.sh -o
 
 ### Module 4: Variant calling with bcftools
 
-Lierature suggests using two or more variant callers, because there are several highly accurate SNP and indel callers available, and concordance between multiple callers lends confidence to  calls. In addition to GATK, this workflow performs variant calling with bcftools (7). This module also starts with the base recalibrated BAMs from the batch. Using the swarm functionality again, we run bcftools mpileup per chromosome, across samples, producing 24 VCFs. 
+Lierature suggests using two or more variant callers, because concordance between multiple callers confers confidence to candidate variants. In addition to GATK, this workflow performs variant calling with bcftools (7). This module also starts with the base recalibrated BAMs from the batch. Using the swarm functionality again, we run bcftools mpileup per chromosome, across samples, producing 24 VCFs. The mpileup VCFs are annotated with allele frequencies from the 1000 Genomes project, which is recommended by bcftools documentation, because population frequencies can be used to inform calling. 
 
-Unlike GATK, bcftools does not have a model to perform filtering. There are various approaches to filtering, but most tutorials and documentation recommend a hard-filtering approach. My approach was largely informed by the recommendations in (8,9). In nearly all the VCFs we have received from NISC, you can see the same set of hard filters have been applied to SNPs and indels. These are very common filtering parameters and values. 
-
-  ![image](https://github.com/user-attachments/assets/52d42b91-a062-4e3f-a992-4e35288c556b)
-
-I wanted to make our filtering workflow a little more adaptable. Instead of applying the same filtering thresholds to all of our batches, I aim to identify thresholds that are tailored to the batch, to try to mitigate changes and biases in the batch. The pipeline takes a subset (1%) of SNPs and indels from each batch, and identifies extreme outlier values in variant metrics. For SNPs, we use the following metrics: variant quality, depth and mapping quality Z-score (MQBZ). MQBZ looks at the differences in mapping quality at heterozygous sites, because significant differences at the ALT allele could indicate a false positive. For indels, quality and depth are also used, as well as IMF, which is the fraction of reads supporting an indel.  
+Bcftools variants are often filtered with hard-filters, but we wanted to make our filtering approach more adaptable. We aim to identify thresholds that are tailored to the batch, to try to mitigate changes and biases in the batch (8,9). The pipeline takes a subset (1%) of SNPs and indels from a batch, and identifies extreme outlier values in variant metrics. For SNPs, we use the following metrics: variant quality, depth and mapping quality Z-score (MQBZ). MQBZ looks at the differences in mapping quality at heterozygous sites, because significant differences at the ALT allele could indicate a false positive. For indels, quality and depth are also used, as well as IMF, which is the fraction of reads supporting an indel.  
 
 In the example below, you can see the range of quality values varies between Batch 1 and 2, with Batch 1 exhibiting on average higher quality values. If we were apply the same quality filter to both batches, we would remove more variants in Batch 2 than 1, and there is an increased chance we are removing true variants. The motivation is to try to accomodate those metric variations between batches, to retain as many true variants as possible. While this does mean the filtering thresholds won't be standardize and this can complicate methods reporting a bit, thresholds should be comparable between batches. 
 
@@ -233,9 +229,9 @@ Annotations employed include:
 * ClinVar
 * GERP
 
-I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on the --pick_flag. In addition to this I have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls within a canonical transcript (11). After annotation, I filter out variants with a gnomAD joint allele frequency greater than 0.2.
+I also flag the "picked" variant according to their impact ranking. Please refer to (15) for more information on the --pick_flag. In addition to this we have also added a "CANONICAL" flag, which will indicate with just a "YES" if a given variant falls within a canonical transcript (11). After annotation, variants with a gnomAD joint allele frequency greater than 0.2 (potential values range 0-1) are removed.
 
-This VEP script just takes a VCF as input, so it can be applied to one or more samples from any variant caller. I pass batch VCFs from both GATK and bcftools to run-VEP.sh. VEP does not have sophisticated threading, parallelization or lscratch space usage, so I recommend only allocating 10-15g of memory across the biowulf default of 2 threads. 
+This annotation script can be applied to joint VCFs.  Batch VCFs from both GATK and bcftools are passed to run-VEP.sh. Only 10-15GB of memory and 2 CPU are adequate for VEP, although a longer walltime (> 8 hours) is often necessary. 
 
 ```
 sbatch --mem=[] --cpus-per-task=[] run-VEP.sh -v [VCF]
@@ -252,9 +248,9 @@ The outputs include a *.vcf and *.filtered.vcf for each chromosome (1-22, X, Y).
 
 ### Module 6: Building the Hail database 
 
-Hail is a database software designed specifically for managing genomic data, because standard dataframe options like SQL are not as sophisticated for this work (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a multi-sample VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
+Hail is a database software designed specifically for managing genomic data (16). 1000 genomes, gnomAD and the UK Biobank among other large consortia employ Hail. Users can import a joint VCF into Hail and construct a matrixtable, which can represent varying numbers of records and identifiers. Hail has extensive functionality for querying VCF data, aggregating statistics and performing annotation. 
 
-Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This was mostly to improve the speed for querying the database because it allows the query to be parallelized. 
+Even though the MatrixTable can accomodate much larger quanities of data than we store in the Kastner lab, I chose to split the database into four groups of chromosomes: chr1-4, chr5-10, chr11-17 and chr18-22,X,Y. This split allows me to update them in parallel. 
 
 Batch VCFs need to be modified before building these four hail databases. To perform these modifications, I have written build_hail_2.sh and build_hail_bcftools.sh. These are a little redundant, and will be consolidated at some point, per my laundry list. Bcftools and GATK variants are stored in separate hail databases because they have discongruant annotations. When performing queries with either submit-sample-query.sh or hail-gene-query.py, variants from both callers are consolidated in the outputs. The scripts:
 1. accept a list of folders containing batch annotated VCF files
@@ -295,7 +291,7 @@ You can pass as many folders of annotated VCFs as you'd like.
 __NOTE__ that these "db" VCFs are not the final database. But, they are the final VCF from which the four hail databases are constructed. To construct the Hail databases, you must: 
 1. Make a new directory in /data/Kastner_PFS/WGS/cohort_db of the name version_[rundate]. You can see version_091725 as an example. In that example you will see the 4 VCFs as well as 4 folders with the same name but a '.mt' suffix instead of '.vcf.gz'. These are the matrix tables (sub-databases) constructed from the four VCFs.
 2. Move the VCFs to your new directory from buildhail_*.
-3. You need to combine the new *concat VCFs with the combined VCFs from the previous update. I use bcftools merge, but this will send you an error if there are duplicate samples. There may be duplicate runs on a given sample if say, a new family member was sequenced, and we wanted to variant call them together. Start by identifying duplicate samples with something like:
+3. You need to combine the new *concat VCFs with the combined VCFs from the previous update. I use bcftools merge, but this will send you an error if there are duplicate samples. There may be duplicate runs on a given sample if say, a new family member was sequenced, and we wanted to joint variant call them. Start by identifying duplicate samples with something like:
 
 ```
 bcftools query -l [NEW DB1] > samples.txt
@@ -346,13 +342,19 @@ At this point you should have eight matrix tables (between GATK and bcftools) re
 
 ### Module 7: Querying the Hail database 
 
-<br />
+We designed two programs for querying the Hail database: 1) a gene query, and 2) a sample query. The gene query accepts up to 100 comma-separated genes. It uses GENCODE v49 to build an interval list results are formatted in an excel-compatible TSV file. A query of a smaller list of genes (< 5) will finish in less than a couple minutes. Larger queries (60+) finish in 10-15 minutes. 
 
-<div align="center">
-  <img width="3162" height="980" alt="Decision Tree Team Whiteboard in Burgundy Peach Simple Colorful Style (5)" src="https://github.com/user-attachments/assets/2f7608a8-9d85-4718-99a8-71f10a5f707c" />
-</div>
+To run the gene query, you need to load the hail module in biowulf. 
 
-<br />
+```
+module load hail
+
+python3-hail /data/Kastner_PFS/scripts/pipelines/WGS_Kaster_lab/hail-gene-query.py -g [GENES] -o [OUTPUT NAME]
+
+Ex.: python3-hail /data/Kastner_PFS/scripts/pipelines/WGS_Kaster_lab/hail-gene-query.py -g MEFV -o MEFV-query.tsv
+Ex.: python3-hail /data/Kastner_PFS/scripts/pipelines/WGS_Kaster_lab/hail-gene-query.py -g "MEFV,CDC42,NLRP3" -o multi-gene-query.tsv 
+
+```
 
 </details>
 
