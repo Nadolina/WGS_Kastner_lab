@@ -342,7 +342,7 @@ At this point you should have eight matrix tables (between GATK and bcftools) re
 
 ### Module 7: Querying the Hail database 
 
-We designed two programs for querying the Hail database: 1) a gene query, and 2) a sample query. The gene query accepts up to 100 comma-separated genes. It uses GENCODE v49 to build an interval list results are formatted in an excel-compatible TSV file. A query of a smaller list of genes (< 5) will finish in less than a couple minutes. Larger queries (60+) finish in 10-15 minutes. 
+We designed two programs for querying the Hail database: 1) a gene query, and 2) a sample query. The gene query accepts up to 100 comma-separated genes. It uses GENCODE v49 to build an interval list for efficient querying. The results are formatted in an excel-compatible TSV file. A query of a smaller list of genes (< 5) will finish in less than a couple minutes. Larger queries (60+) finish in 10-15 minutes. 
 
 To run the gene query, you need to load the hail module in biowulf. 
 
@@ -356,74 +356,24 @@ Ex.: python3-hail /data/Kastner_PFS/scripts/pipelines/WGS_Kaster_lab/hail-gene-q
 
 ```
 
-</details>
+The sample query requires a comma-separated list of samples (i.e./ a family or trio). Optionally, the user can provide also provide a pedigree and a loci. Providing a pedigree along with a trio allows the query to generate a suggested mode of inheritance for a given variant. Narrowing the query to a loci will make the query much faster but is not necessary. A query of the whole genome for a trio may take upwards of an hour to complete. 
 
-<details>
-<summary>Module 8: Transferring completed VCFs and BAMs to long-term storage</summary>
-  
-### Module 8: Transferring completed VCFs and BAMs to long-term storage 
-
-Storing our re-aligned samples and variants is an essential final step in this workflow. All data from modules 1-5 should be in your working directory (i.e: /data/[USERNAME]/working_dir/). Some of the files you produced need to be retained. See the table below for a list of retained files and their storage destination. 
-
-| File | Destination | Path |
-|------|-------------|------|
-|[SAMPLE]_bqsr_1.bam | ketu | /mnt/[USERNAME]/ketu_labs/Kastner/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
-|original BAM | ketu | /mnt/[USERNAME]/ketu_labs/Kastner/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
-| sample GATK VCF (unannotated) | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
-| sample bcftools VCF (unannotated) | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
-| original VCFs | biowulf | /data/Kastner_PFS/WGS/[YEAR ORIGINAL DATA PRODUCED]/[SAMPLE] |
-
-To perform these transfers for a given batch use data_organization.sh. You must pass the batch-[DATE].txt file, and you can optionally pass the __unannotated__ batch GATK and bcftools VCFs. The tool will run if you pass just the batch text file, or the batch file and just one of the batch VCFs. It will generate appropriate outputs from whatever files are provded. I use bcftools view with the -s flag to extract a sample VCF from a given batch VCF. The program produces 1) a globus transfer file with the naming scheme globus-transfer-[CURRENT DATE]-[BATCH NAME].txt, 2) a swarm file with the name vcf_transfer_[BATCH NAME].swarm, and 3) a text file named orig_vcf_transfer_[DATE]-[BATCHNAME].txt. To avoid data loss, I do not initite these transfers from within the program. Instead, I __strongly encourage__ the user to review all three transfer files for errors before manually submitting them. Run the program and initiate the subsequent transfers as below: 
+If you provide a pedigree, it needs to be formatted as a PLINK *.fam file (https://plink.readthedocs.io/en/latest/plink_fmt/). Just create a text file. The columns are family ID, sample, paternal ID, maternal ID, sex and phenotype. Please refer to the plink documentation for the specifications. The contents will look like:
 
 ```
-
-sbatch [parameters] globus_transfer.sh -o [batch] -g [GATK VCF (unannotated)] -b [bcftools VCF (unannotated)]
-
--o batch file of paths to original bams 
--g gatk batch VCF
--b bcftools batch VCF
--h help
-
+F3162   6366    6368    6367    2       2
+F3162   6367    0       0       2       1
+F3162   6368    0       0       1       1
+F3162   6369    6368    6367    1       1
 ```
 
-Use the globus endpoint search to find the globus origin and destination IDs for biowulf and ketu. The origin endpoint ID (biowulf) should be e2620047-6d04-11e5-ba46-22000b92c6ec. Use the flag --dry-run to print globus submission output, as an additional check before actually submitting. Remove the flag to actually submitt the transfer. 
-
-Submit the swarm to transfer new and original sample VCFs from your working director to Kastner_PFS. I use the -b flag to group a few bcftools view commands onto the same swarm job, because a single command is very quick, and grouping commands allows for more efficient use of resources. 
+Use the below syntax to submit a query:
 
 ```
-
-globus endpoint search NIH
-globus endpoint search nhgrishell02
-globus transfer --no-verify-checksum --batch globus-transfer-${rundate}-${batch_prefix}.txt {origin endpoint globus ID} {destination endpoint globus ID} --dry-run
-
-swarm --module bcftools -b 3 vcf_transfer_${batch_prefix}.swarm
-
+sbatch /data/Kastner_PFS/scripts/pipelines/WGS_Kastner_lab/submit_sample_query.sh -s Sample1,Sample2,...,SampleN -p [PLINK FORMATTED PEDIGREE] -l [chrN:START-END]
 ```
-The final file, the text file, contains just a series of mv commands. These commands will take the original VCFs for a given sample and move them into their prescribed directory (i.e:/data/Kastner_PFS/WGS/[YEAR OF ORIGN]/[SAMPLE]). These VCFs are mostly stored in seq_data_storage, but some are stored elsewhere, so in an effort to consolidate everything in one directory with consistent naming, we are performing these moves. The mv command is very fast, so if you want to make this txt into a swarm file you can, but I recommend just running them through a loop; it will take just a few seconds. 
-
-```
-while read command; do ${command} ; done < [TEXT FILE]
-```
-
-I plan to add another module to this progran to move the __annotated__ batch VCFs to their destination in /data/Kastner_PFS/WGS/cohort_db/batch_VCFs/. 
 
 </details>
-
-## Cumulative outputs
-
-```
-[sample]/
-  [sample]_out/
-    [sample].reverted.bam
-    [sample].mergedaln.bam
-    [sample].mkAdapter.metrics.txt
-    [sample].originalaln.stats
-    [sample].mergedaln.stats
-  qc_out/
-    [sample].reverted_fastqc.html
-    [sample].reverted_fastqc.zip
-    
-```
 
 ## Laundry list 
 
