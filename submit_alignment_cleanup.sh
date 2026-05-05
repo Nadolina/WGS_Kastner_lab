@@ -40,7 +40,7 @@ then
 	cat $batch
 
 	## If a batch file is provided, create a swarm file and submit to swarm
-    echo "#SWARM -g 75 -t 18 --gres=lscratch:400 --time=1-00:00:00" > alignment_cleanup_${rundate}.swarm
+    echo "#SWARM -g 80 -t 16 --gres=lscratch:400 --time=1-00:00:00" > alignment_cleanup_${rundate}.swarm
     mkdir -p alignment_cleanup_${rundate}_logs
 
     for bam in $(cat $batch); do
@@ -55,7 +55,7 @@ then
 
 	## If a single bam is provided, submit alignment_cleanup.sh directly to slurm with the bam as input
 	echo "Single bam provided: ${mbam}"
-    sbatch --mem=48g --cpus-per-task=16 --gres=lscratch:400 --time=1-00:00:00 ${sourcedir}/alignment_cleanup.sh -b ${mbam}
+    sbatch --mem=80g --cpus-per-task=24 --gres=lscratch:400 --time=1-00:00:00 ${sourcedir}/alignment_cleanup.sh -b ${mbam}
 else 
 	echo "Please provide either a single bam (-b) or a batch file (-f), not both."
 	exit 1

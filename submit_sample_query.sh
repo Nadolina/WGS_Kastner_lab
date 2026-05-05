@@ -93,14 +93,14 @@ echo "#SWARM -g 25 -t 8 --gres=lscratch:100 --module hail --logdir ${OUTDIR}/sam
 echo "#SWARM -g 25 -t 8 --gres=lscratch:100 --module hail --logdir ${OUTDIR}/sample_query_${rundate}_logs" > combinepairs-${rundate}.swarm
 
 DB_PATHS=(
-  "/data/Kastner_PFS/WGS/cohort_db/version_120225/db1.gatk.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/version_120225/db2.gatk.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/version_120225/db3.gatk.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/version_120225/db4.gatk.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db1.bcftools.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db2.bcftools.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db3.bcftools.120225.mt"
-  "/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db4.bcftools.120225.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/version_042426/db1.combined.041726.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/version_042426/db2.combined.041726.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/version_042426/db3.combined.041726.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/version_042426/db4.combined.041726.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db1.combined.042226.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db2.combined.042226.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db3.combined.042226.mt"
+  "/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db4.combined.042226.mt"
 )
 
 DB=""
@@ -115,8 +115,8 @@ if [[ -z "${LOCUS}" ]]; then
   done
 
   for num in $(seq 1 4); do 
-    echo "python3-hail ${sourcedir}/hail-sample-ped-query-combinepairs.py --g_ht_path ${OUTDIR}/db${num}.gatk.120225.query.ht \
-      --b_ht_path ${OUTDIR}/db${num}.bcftools.120225.query.ht \
+    echo "python3-hail ${sourcedir}/hail-sample-ped-query-combinepairs.py --g_ht_path ${OUTDIR}/db${num}.combined.041726.query.ht \
+      --b_ht_path ${OUTDIR}/db${num}.combined.042226.query.ht \
       --outdir ${OUTDIR}" >> combinepairs-${rundate}.swarm
   done 
 else
@@ -140,18 +140,18 @@ else
     exit 0
   fi
 
-  echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db /data/Kastner_PFS/WGS/cohort_db/version_120225/db${DB}.gatk.120225.mt \
+  echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db /data/Kastner_PFS/WGS/cohort_db/version_042426/db${DB}.combined.041726.mt \
     --samples ${SAMPLE_ARGS} \
     ${PED_ARG} \
     --locus ${LOCUS} \
     --outdir /lscratch/\${SLURM_JOB_ID}" >> sample-query-ped-${rundate}.swarm
-  echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db /data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db${DB}.bcftools.120225.mt \
+  echo "python3-hail ${sourcedir}/hail-sample-ped-query-fxn.py --db /data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db${DB}.combined.042226.mt \
     --samples ${SAMPLE_ARGS} \
     ${PED_ARG} \
     --locus ${LOCUS} \
     --outdir /lscratch/\${SLURM_JOB_ID}" >> sample-query-ped-${rundate}.swarm
-  echo "python3-hail ${sourcedir}/hail-sample-ped-query-combinepairs.py --g_ht_path ${OUTDIR}/db${DB}.gatk.120225.query.ht \
-    --b_ht_path ${OUTDIR}/db${DB}.bcftools.120225.query.ht \
+  echo "python3-hail ${sourcedir}/hail-sample-ped-query-combinepairs.py --g_ht_path ${OUTDIR}/db${DB}.combined.041726.query.ht \
+    --b_ht_path ${OUTDIR}/db${DB}.combined.042226.query.ht \
     --outdir ${OUTDIR}" >> combinepairs-${rundate}.swarm
 
 fi

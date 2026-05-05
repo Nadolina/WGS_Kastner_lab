@@ -148,8 +148,10 @@ BAMs=""
 for chr in ${chrs}; do 
 	BAMs+="${OUTDIR}/chr${chr}.${sample}_bqsr_1.bam "
 done
-BAMs="${OUTDIR}/${sample}.alt_contigs.bqsr_1.bam"
+BAMs+="${OUTDIR}/${sample}.alt_contigs.bqsr_1.bam"
 
+echo "Merging chrosome-scattered BQSR BAMs into a single BAM for downstream variant calling."
+echo "samtools merge -f -@4 -o ${OUTDIR}/${sample}_bqsr_1.bam --write-index ${BAMs}"
 merge_jid=$(sbatch --mem=16g -c 4 --gres=lscratch:100 --time=4:00:00 --dependency afterok:${bqsr_2_jid} \
 	--wrap="module load samtools ; samtools merge -f -@4 -o ${OUTDIR}/${sample}_bqsr_1.bam --write-index ${BAMs}")
 

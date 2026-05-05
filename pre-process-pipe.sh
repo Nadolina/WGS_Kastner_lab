@@ -68,7 +68,6 @@ revert() { ## Converts the original aligned bam to an unaligned bam
      		I=${alnbam} \
 			OUTPUT_BY_READGROUP=true \
 			OUTPUT=${OUTDIR} \
-     		SANITIZE=true \
      		ATTRIBUTE_TO_CLEAR=BD \
 			ATTRIBUTE_TO_CLEAR=BI \
      		ATTRIBUTE_TO_CLEAR=XS \

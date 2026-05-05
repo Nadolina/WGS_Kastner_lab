@@ -11,48 +11,94 @@ from concurrent.futures import ThreadPoolExecutor
 
 ## Parsing gene symbol from command line input 
 p=argparse.ArgumentParser()
-p.add_argument("-g","--gene", help = "Pass gene symbol to query.")
+p.add_argument(
+    "-g","--genes", 
+    help = "Comma-separated list of up to 100 gene symbols to query.")
+p.add_argument(
+    "-o", "--output",
+    help="Name of output file for resulting tsv (ex. 'MEFV-query-032026.tsv')"
+)
+
 args = p.parse_args()
-if args.gene:
-    print ("Gene to query: % s" % args.gene)
-    gene=str(args.gene)
+if args.genes:
+    gene_list = [g.strip() for g in args.genes.split(",") if g.strip()]
+    if len(gene_list) > 100:
+        raise ValueError("Maximum 100 genes allowed.")
+    print("Genes to query:", gene_list)
+else:
+    raise ValueError("Please provide at least one gene with -g or --genes.")
+gene_str = "_".join(gene_list[:3]) + ("_etc" if len(gene_list) > 3 else "")
+logname = f"hail-{gene_str}-{date.today().strftime('%m%d%y')}.log"
 
-## Initializing hail and collecting pre-built matrix tables for querying
-logname="".join(['hail-',gene,'-',date.today().strftime('%m%d%y'),'.log'])
-hl.init(spark_conf={'spark.driver.memory': '25g'}, log=logname)
+## REFERENCE FILES --------------------------------
+GTF = '/data/Kastner_PFS/references/HG38/gencode.v49.annotation.gtf.gz'
+CONSTRAINT_HT = '/data/Kastner_PFS/references/gnomad_v4.1/gnomad.v4.1.constraint_metrics.ht'
 
-constraint=hl.read_table('/data/Kastner_PFS/references/gnomad_v4.1/gnomad.v4.1.constraint_metrics.ht')
-constraint=constraint.key_by('gene','gene_id','transcript')
+## QUERY GENE COORDINATES ---------------------------------
+
+gtf = pd.read_csv(
+    GTF, sep='\t', comment='#', header=None, usecols=[0,2,3,4,8],
+    names=['chrom','feature','start','end','attrs']
+) 
+
+## Resolve gene coordinates from GENCODE v49 GTF before starting Spark
+gtf = gtf[gtf['feature'] == 'gene'].copy() ## Only keep gene features to simplify parsing
+gtf['gene_name'] = gtf['attrs'].str.extract(r'gene_name "([^"]+)"') ## creating a "gene_name" column 
+gene_coords = gtf[gtf['gene_name'].isin(gene_list)][['gene_name','chrom','start','end']]
+
+missing = set(gene_list) - set(gene_coords['gene_name'])
+if missing:
+    print(f"Warning: no GENCODE coordinates found for: {missing}")
+if gene_coords.empty:
+    raise ValueError("Could not resolve genomic coordinates for any gene from GENCODE GTF.")
+gene_intervals_raw = list(gene_coords.itertuples(index=False, name=None))  # creating list of gene coordinates 
+
+hl.init(spark_conf={'spark.driver.memory': '30g'}, log=logname)
+
+## Build Hail locus intervals now that hl is initialized
+gene_intervals = []
+for gene, chrom, start, end in gene_intervals_raw:
+    try:
+        # GENCODE uses chrN naming and 1-based coords; Hail intervals are half-open
+        gene_intervals.append(
+            hl.parse_locus_interval(f'{chrom}:{start}-{end}', reference_genome='GRCh38')
+        )
+    except Exception as e:
+        print(f"Warning: could not parse interval for '{gene}' ({chrom}:{start}-{end}): {e}")
+if not gene_intervals:
+    raise ValueError("No valid Hail intervals could be constructed from gene coordinates.")
 
 ## FUNCTIONS --------------------------------
 
-def gene_search(db):
+def gene_search(mt, source_name):
 
-    print ("\nInitializing hail and loading matrix table %s.\n" % db)
-    mt=hl.read_matrix_table(db)
+    print ("\nRunning query in %s.\n" % source_name)
 
-    query=mt.filter_rows(mt.info['SYMBOL'].contains(gene))
+    mt=hl.filter_intervals(mt, gene_intervals)
+
+    query=mt.filter_rows(hl.literal(gene_list).contains(mt.info['SYMBOL'][0]))
     if query.rows().count()==0:
-        print ('%s not found in %s' % (gene,db))
+        print ('%s not found in %s' % (gene_list,source_name))
         return 
     # else:
     #     query=query.persist()
 
     dim=query.count()
-    print ("\nNumber of rows matching %s in %s: " % (gene,db), dim[0], "\n")
+    print ("\nNumber of rows matching %s in %s: " % (gene_list,source_name), dim[0], "\n")
 
     ## Adding some aggregate statistics from hail's built in variant_qc function 
     query=hl.variant_qc(query)
 
     ## Collecting heterozygous and alt-homozygous samples 
-    print ("\nCollecting samples with variants observed in % s" % gene)
-    query=query.annotate_rows(n_het=query.variant_qc['n_het'],
-                        n_hom_alt=query.variant_qc['homozygote_count'][1],
-                        het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
-                        hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s)))
+    print ("\nCollecting samples with variants observed in % s" % gene_list)
+    query=query.annotate_rows(
+        n_het=query.variant_qc['n_het'],
+        n_hom_alt=query.variant_qc['homozygote_count'][1],
+        het_samples=hl.agg.filter(query.GT.is_het(),hl.agg.collect(query.s)),
+        hom_alt_samples=hl.agg.filter(query.GT.is_hom_var(),hl.agg.collect(query.s))
+    )
     
     tb=query.localize_entries()
-    # query=query.unpersist()
     return (tb)
 
 # Function to safely extract string from single-item list
@@ -67,44 +113,37 @@ def extract_single_string(cell):
 
 start=time.time()
 
-## Querying the GATK variant calls in parallel
+## Union GATK databases first, then query once
 if __name__ == '__main__':
-    databases=['/data/Kastner_PFS/WGS/cohort_db/version_120225/db1.gatk.120225.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_120225/db2.gatk.120225.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_120225/db3.gatk.120225.mt',
-            '/data/Kastner_PFS/WGS/cohort_db/version_120225/db4.gatk.120225.mt']
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        queries=list(executor.map(gene_search,databases))
-    
-    for query in queries:
-        if query is not None:
-            g_tb=query
+    databases=['/data/Kastner_PFS/WGS/cohort_db/version_042426/db1.combined.041726.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_042426/db2.combined.041726.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_042426/db3.combined.041726.mt',
+            '/data/Kastner_PFS/WGS/cohort_db/version_042426/db4.combined.041726.mt']
+    gatk_mts = [hl.read_matrix_table(db) for db in databases]
+    g_mt = hl.MatrixTable.union_rows(*gatk_mts)
+    g_tb = gene_search(g_mt, 'GATK (union of 4 MTs)')
 
-## Querying the bcftools calls in parallel
-if __name__ == '__main__':
-    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db1.bcftools.120225.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db2.bcftools.120225.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db3.bcftools.120225.mt',
-        '/data/Kastner_PFS/WGS/cohort_db/bcftools_120225/db4.bcftools.120225.mt'
+## Union bcftools databases first, then query once
+    databases=['/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db1.combined.042226.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db2.combined.042226.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db3.combined.042226.mt',
+        '/data/Kastner_PFS/WGS/cohort_db/bcftools_042426/db4.combined.042226.mt'
         ]
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        queries=list(executor.map(gene_search,databases))
-    
-    for query in queries:
-        if query is not None:
-            b_tb=query
+    bcftools_mts = [hl.read_matrix_table(db) for db in databases]
+    b_mt = hl.MatrixTable.union_rows(*bcftools_mts)
+    b_tb = gene_search(b_mt, 'bcftools (union of 4 MTs)')
 
 
 btb_semijoin=b_tb.semi_join(g_tb).flatten().key_by('locus','alleles') ## Shared loci+alleles between gatk and bcftools calls 
 btb_antijoin=b_tb.anti_join(g_tb).flatten().key_by('locus','alleles') ## Loci/alleles seen in bcftools and not GATK 
 
-# # btb_flat=btb_antijoin.flatten()
-
 #Renaming bcftools columns to distinguish them when antijoin unioned to gtb 
-btb_antijoin=btb_antijoin.transmute(b_n_hom_alt=btb_antijoin['n_hom_alt'],
-                        b_n_het=btb_antijoin['n_het'],
-                        b_het_samples=btb_antijoin['het_samples'],
-                        b_hom_alt_samples=btb_antijoin['hom_alt_samples'])
+btb_antijoin=btb_antijoin.transmute(
+    b_n_hom_alt=btb_antijoin['n_hom_alt'],
+    b_n_het=btb_antijoin['n_het'],
+    b_het_samples=btb_antijoin['het_samples'],
+    b_hom_alt_samples=btb_antijoin['hom_alt_samples']
+    )
 
 ## For shared loci/alleles, I am just annotating the GATK call rows with bcftools call info
 g_tb=g_tb.annotate(b_het_samples=btb_semijoin[g_tb.key].het_samples,
@@ -119,6 +158,10 @@ gtb_flat=g_tb.flatten().key_by('locus','alleles')
 
 ## Union combines tables that do not have shared keys - so it retains unique locus/allele pairs from GATK and bcftools 
 union_tb=gtb_flat.union(btb_antijoin,unify=True)
+
+## Loading consraint table and annotating union table with constraint metrics
+constraint = hl.read_table(CONSTRAINT_HT)
+constraint = constraint.key_by('gene','gene_id','transcript')
 
 #temporarily re-key the table to add-in constraint information
 union_tb=union_tb.annotate(gene=union_tb['info.SYMBOL'][0], 
@@ -156,10 +199,8 @@ colorder=['locus','alleles','n_het','n_hom_alt','het_samples','hom_alt_samples',
             'info.am_transcript_id','info.am_uniprot_id','pLI','LOEUF','mis_z_score']
 reorder_df=df[colorder]      
 
-strlist=["hail-",gene,"-",date.today().strftime('%m%d%y'),".tsv"]
-outname="".join(strlist)
-print ("\nOutput query table saved to : %s " % outname)
-reorder_df.to_csv(outname, sep='\t')
+print ("\nOutput query table saved to : %s " % args.output)
+reorder_df.to_csv(args.output, sep='\t')
 
 end=time.time()
 
